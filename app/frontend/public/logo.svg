@@ -1,0 +1,36 @@
+<svg width="100%" viewBox="0 0 680 680" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>FreelancePay Logo</title>
+<defs>
+  <clipPath id="hex-clip">
+    <polygon points="340,80 560,200 560,480 340,600 120,480 120,200"/>
+  </clipPath>
+</defs>
+<polygon points="340,60 575,192 575,492 340,620 105,492 105,192" fill="none" stroke="#9945FF" stroke-width="3"/>
+<polygon points="340,90 550,207 550,473 340,590 130,473 130,207" fill="#0a0f1e"/>
+<polygon points="340,110 535,217 535,463 340,570 145,463 145,217" fill="none" stroke="#14F195" stroke-width="1" opacity="0.4"/>
+<line x1="145" y1="310" x2="220" y2="310" stroke="#14F195" stroke-width="1.5" opacity="0.6"/>
+<circle cx="220" cy="310" r="3" fill="#14F195" opacity="0.8"/>
+<line x1="535" y1="310" x2="460" y2="310" stroke="#14F195" stroke-width="1.5" opacity="0.6"/>
+<circle cx="460" cy="310" r="3" fill="#14F195" opacity="0.8"/>
+<path d="M 220 220 Q 340 150 460 220" fill="none" stroke="#9945FF" stroke-width="1.5" opacity="0.5"/>
+<path d="M 220 400 Q 340 470 460 400" fill="none" stroke="#9945FF" stroke-width="1.5" opacity="0.5"/>
+<circle cx="340" cy="310" r="110" fill="#111827"/>
+<circle cx="340" cy="310" r="110" fill="none" stroke="#9945FF" stroke-width="2.5"/>
+<rect x="255" y="260" width="14" height="100" rx="3" fill="#ffffff"/>
+<rect x="255" y="260" width="65" height="14" rx="3" fill="#ffffff"/>
+<rect x="255" y="303" width="50" height="12" rx="3" fill="#9945FF"/>
+<rect x="345" y="260" width="14" height="100" rx="3" fill="#ffffff"/>
+<rect x="345" y="260" width="50" height="14" rx="3" fill="#ffffff"/>
+<path d="M 395 260 Q 430 260 430 295 Q 430 330 395 330 L 345 330 L 345 318 L 395 318 Q 416 318 416 295 Q 416 274 395 274 Z" fill="#14F195"/>
+<circle cx="280" cy="395" r="4" fill="#14F195" opacity="0.9"/>
+<circle cx="340" cy="405" r="4" fill="#9945FF" opacity="0.9"/>
+<circle cx="400" cy="395" r="4" fill="#14F195" opacity="0.9"/>
+<text x="340" y="460" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#ffffff" letter-spacing="4">FREELANCEPAY</text>
+<text x="340" y="485" text-anchor="middle" font-family="Arial" font-size="10" fill="#14F195" letter-spacing="2">BUILT ON SOLANA</text>
+<circle cx="340" cy="108" r="4" fill="#9945FF"/>
+<circle cx="340" cy="572" r="4" fill="#9945FF"/>
+<circle cx="127" cy="222" r="4" fill="#14F195"/>
+<circle cx="553" cy="222" r="4" fill="#14F195"/>
+<circle cx="127" cy="398" r="4" fill="#14F195"/>
+<circle cx="553" cy="398" r="4" fill="#14F195"/>
+</svg>
