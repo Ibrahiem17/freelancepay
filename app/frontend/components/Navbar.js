@@ -20,6 +20,7 @@ export default function Navbar() {
 
         <div className="navbar-links">
           <Link href="/" style={{ color: pathname === "/" ? "#e2e8f0" : undefined }}>Home</Link>
+          <Link href="/how-it-works" style={{ color: pathname === "/how-it-works" ? "#e2e8f0" : undefined }}>How It Works</Link>
           <Link href="/client" style={{ color: pathname === "/client" ? "#e2e8f0" : undefined }}>Client</Link>
           <Link href="/freelancer" style={{ color: pathname === "/freelancer" ? "#e2e8f0" : undefined }}>Freelancer</Link>
           <span className="devnet-badge">DEVNET</span>
