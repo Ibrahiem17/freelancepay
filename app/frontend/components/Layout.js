@@ -6,6 +6,7 @@ export default function Layout({ children, title = "FreelancePay" }) {
     <>
       <Head>
         <title>{`${title} — FreelancePay`}</title>
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content="Trustless freelance escrow on Solana. Lock SOL, deliver work, get paid instantly." />
       </Head>
