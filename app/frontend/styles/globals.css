@@ -15,6 +15,7 @@
   --blue:      #3b82f6;
   --amber:     #f59e0b;
   --red:       #ef4444;
+  --orange:    #f97316;
   --radius:    10px;
 }
 
@@ -162,7 +163,8 @@ a { color: inherit; text-decoration: none; }
 .badge-active    { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
 .badge-submitted { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
 .badge-completed { background: var(--green-lo);        color: var(--green); border: 1px solid rgba(20,241,149,0.3); }
-.badge-cancelled { background: rgba(239,68,68,0.1);   color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+.badge-cancelled         { background: rgba(239,68,68,0.1);   color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+.badge-revisionRequested { background: rgba(249,115,22,0.12); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
 
 /* ── Buttons ────────────────────────────────── */
 .btn {
@@ -332,6 +334,18 @@ a { color: inherit; text-decoration: none; }
 }
 
 .work-box strong { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.revision-box {
+  background: rgba(249,115,22,0.07);
+  border: 1px solid rgba(249,115,22,0.28);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  margin-top: 0.75rem;
+}
+
+.revision-box strong { color: var(--orange); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
 .explorer-link {
   font-size: 0.8rem;

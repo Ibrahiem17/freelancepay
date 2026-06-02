@@ -13,15 +13,37 @@ import { parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
+const STATUS_LABELS = {
+  active:            "Active",
+  submitted:         "Submitted",
+  completed:         "Completed",
+  cancelled:         "Cancelled",
+  revisionRequested: "Revision Requested",
+};
+
 function StatusBadge({ status }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
+  return (
+    <span className={`badge badge-${status}`}>
+      {STATUS_LABELS[status] || status}
+    </span>
+  );
 }
 
-function EscrowCard({ escrow, onApprove, onCancel, busy }) {
-  const sol = (escrow.amount / LAMPORTS).toFixed(4);
+function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
+  const [showRevision, setShowRevision] = useState(false);
+  const [revMsg, setRevMsg]             = useState("");
+  const sol        = (escrow.amount / LAMPORTS).toFixed(4);
   const isActive    = escrow.status === "active";
   const isSubmitted = escrow.status === "submitted";
-  const parsed = parseSubmission(escrow.workSubmission);
+  const parsed      = parseSubmission(escrow.workSubmission);
+
+  async function handleRevision(e) {
+    e.preventDefault();
+    if (!revMsg.trim()) return;
+    await onRequestRevision(escrow, revMsg.trim());
+    setRevMsg("");
+    setShowRevision(false);
+  }
 
   return (
     <div className="card" style={{ marginBottom: "1rem" }}>
@@ -61,12 +83,30 @@ function EscrowCard({ escrow, onApprove, onCancel, busy }) {
         </div>
       )}
 
+      {escrow.status === "revisionRequested" && escrow.revisionNote && (
+        <div className="revision-box">
+          <strong>Revision requested</strong>
+          <p style={{ marginTop: 4 }}>{escrow.revisionNote}</p>
+        </div>
+      )}
+
       <div className="btn-row">
         <Link href={`/escrow/${escrow.pda}`} className="btn btn-outline btn-sm">View Details</Link>
 
         {isSubmitted && (
           <button className="btn btn-success btn-sm" onClick={() => onApprove(escrow)} disabled={busy}>
             {busy ? <><span className="spinner" /> Processing…</> : "✓ Approve & Pay"}
+          </button>
+        )}
+
+        {isSubmitted && (
+          <button
+            className="btn btn-sm"
+            style={{ background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+            onClick={() => setShowRevision((s) => !s)}
+            disabled={busy}
+          >
+            {showRevision ? "Cancel" : "↩ Request Revision"}
           </button>
         )}
 
@@ -86,19 +126,40 @@ function EscrowCard({ escrow, onApprove, onCancel, busy }) {
           Explorer ↗
         </a>
       </div>
+
+      {isSubmitted && showRevision && (
+        <form onSubmit={handleRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+          <label className="form-label">Describe the changes needed</label>
+          <textarea
+            className="form-textarea"
+            value={revMsg}
+            onChange={(e) => setRevMsg(e.target.value)}
+            placeholder="e.g. Make the logo background transparent, adjust font to Inter…"
+            required
+          />
+          <button
+            type="submit"
+            className="btn btn-sm"
+            style={{ marginTop: "0.6rem", background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+            disabled={busy || !revMsg.trim()}
+          >
+            {busy ? <><span className="spinner" /> Sending…</> : "Send Revision Request"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
 
 export default function ClientPage() {
   const { publicKey } = useWallet();
-  const { createEscrow, approveWork, cancelEscrow, fetchMyEscrowsAsClient } = useEscrow();
+  const { createEscrow, approveWork, cancelEscrow, requestRevision, fetchMyEscrowsAsClient } = useEscrow();
 
-  const [form, setForm]     = useState({ title: "", description: "", freelancer: "", amount: "" });
+  const [form, setForm]       = useState({ title: "", description: "", freelancer: "", amount: "" });
   const [escrows, setEscrows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
-  const [toast, setToast]   = useState(null);
+  const [toast, setToast]     = useState(null);
 
   const clearToast = useCallback(() => setToast(null), []);
 
@@ -146,6 +207,18 @@ export default function ClientPage() {
     const r = await cancelEscrow(escrow.pda);
     if (r.success) {
       setToast({ type: "success", text: "Escrow cancelled. SOL refunded to your wallet.", signature: r.signature });
+      await loadEscrows();
+    } else {
+      setToast({ type: "error", text: r.error });
+    }
+    setLoading(false);
+  }
+
+  async function handleRequestRevision(escrow, message) {
+    setLoading(true);
+    const r = await requestRevision(escrow.pda, message);
+    if (r.success) {
+      setToast({ type: "success", text: "Revision requested. The freelancer will be notified.", signature: r.signature });
       await loadEscrows();
     } else {
       setToast({ type: "error", text: r.error });
@@ -210,7 +283,14 @@ export default function ClientPage() {
               </div>
             ) : (
               escrows.map((e) => (
-                <EscrowCard key={e.pda} escrow={e} onApprove={handleApprove} onCancel={handleCancel} busy={loading} />
+                <EscrowCard
+                  key={e.pda}
+                  escrow={e}
+                  onApprove={handleApprove}
+                  onCancel={handleCancel}
+                  onRequestRevision={handleRequestRevision}
+                  busy={loading}
+                />
               ))
             )}
           </>

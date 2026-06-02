@@ -14,8 +14,20 @@ import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
+const STATUS_LABELS = {
+  active:            "Active",
+  submitted:         "Submitted",
+  completed:         "Completed",
+  cancelled:         "Cancelled",
+  revisionRequested: "Revision Requested",
+};
+
 function StatusBadge({ status }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
+  return (
+    <span className={`badge badge-${status}`}>
+      {STATUS_LABELS[status] || status}
+    </span>
+  );
 }
 
 const TIMELINE = ["active", "submitted", "completed"];
@@ -24,15 +36,19 @@ export default function EscrowDetailPage() {
   const router = useRouter();
   const { id }   = router.query;
   const { publicKey } = useWallet();
-  const { fetchEscrowByPDA, approveWork, cancelEscrow, submitWork } = useEscrow();
+  const { fetchEscrowByPDA, approveWork, cancelEscrow, submitWork, requestRevision } = useEscrow();
 
-  const [escrow, setEscrow]         = useState(null);
-  const [loading, setLoading]       = useState(false);
-  const [toast, setToast]           = useState(null);
-  const [submitNote, setSubmitNote] = useState("");
-  const [submitFile, setSubmitFile] = useState(null);
-  const [uploading, setUploading]   = useState(false);
-  const submitFileRef               = useRef(null);
+  const [escrow, setEscrow]           = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [toast, setToast]             = useState(null);
+  // freelancer submit state
+  const [submitNote, setSubmitNote]   = useState("");
+  const [submitFile, setSubmitFile]   = useState(null);
+  const [uploading, setUploading]     = useState(false);
+  const submitFileRef                 = useRef(null);
+  // client revision state
+  const [showRevision, setShowRevision] = useState(false);
+  const [revMsg, setRevMsg]             = useState("");
   const clearToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
@@ -60,6 +76,22 @@ export default function EscrowDetailPage() {
     const r = await cancelEscrow(escrow.pda);
     if (r.success) {
       setToast({ type: "success", text: "Escrow cancelled. SOL refunded.", signature: r.signature });
+      await reload();
+    } else {
+      setToast({ type: "error", text: r.error });
+    }
+    setLoading(false);
+  }
+
+  async function handleRequestRevision(e) {
+    e.preventDefault();
+    if (!revMsg.trim()) return;
+    setLoading(true);
+    const r = await requestRevision(escrow.pda, revMsg.trim());
+    if (r.success) {
+      setToast({ type: "success", text: "Revision requested. The freelancer will be notified.", signature: r.signature });
+      setRevMsg("");
+      setShowRevision(false);
       await reload();
     } else {
       setToast({ type: "error", text: r.error });
@@ -108,6 +140,7 @@ export default function EscrowDetailPage() {
   const isClient     = escrow && publicKey && escrow.client === publicKey.toBase58();
   const isFreelancer = escrow && publicKey && escrow.freelancer === publicKey.toBase58();
   const isCancelled  = escrow?.status === "cancelled";
+  const canFreelancerSubmit = escrow?.status === "active" || escrow?.status === "revisionRequested";
 
   const submission = escrow?.workSubmission ? parseSubmission(escrow.workSubmission) : null;
 
@@ -194,6 +227,14 @@ export default function EscrowDetailPage() {
               </div>
             </div>
 
+            {/* ── Revision note (visible to both parties) ── */}
+            {escrow.revisionNote && (escrow.status === "revisionRequested") && (
+              <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(249,115,22,0.25)" }}>
+                <h2 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Revision Requested</h2>
+                <p style={{ fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.6 }}>{escrow.revisionNote}</p>
+              </div>
+            )}
+
             {/* ── Work submission ── */}
             {submission && (
               <div className="card" style={{ marginBottom: "1rem" }}>
@@ -215,17 +256,49 @@ export default function EscrowDetailPage() {
               </div>
             )}
 
-            {/* ── Actions ── */}
+            {/* ── Client: approve + revision ── */}
             {isClient && escrow.status === "submitted" && (
               <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(20,241,149,0.2)" }}>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Approve Delivery</h2>
-                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>The freelancer has submitted their work. Approve to release payment.</p>
-                <button className="btn btn-success" onClick={handleApprove} disabled={loading}>
-                  {loading ? <><span className="spinner" /> Processing…</> : "✓ Approve & Release Payment"}
-                </button>
+                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Review Delivery</h2>
+                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>Approve to release payment, or request changes from the freelancer.</p>
+                <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                  <button className="btn btn-success" onClick={handleApprove} disabled={loading}>
+                    {loading ? <><span className="spinner" /> Processing…</> : "✓ Approve & Release Payment"}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+                    onClick={() => setShowRevision((s) => !s)}
+                    disabled={loading}
+                  >
+                    {showRevision ? "Cancel" : "↩ Request Revision"}
+                  </button>
+                </div>
+
+                {showRevision && (
+                  <form onSubmit={handleRequestRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+                    <label className="form-label">Describe the changes needed</label>
+                    <textarea
+                      className="form-textarea"
+                      value={revMsg}
+                      onChange={(e) => setRevMsg(e.target.value)}
+                      placeholder="e.g. Make the logo background transparent, adjust font to Inter…"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="btn"
+                      style={{ marginTop: "0.75rem", background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+                      disabled={loading || !revMsg.trim()}
+                    >
+                      {loading ? <><span className="spinner" /> Sending…</> : "Send Revision Request"}
+                    </button>
+                  </form>
+                )}
               </div>
             )}
 
+            {/* ── Client: cancel (only when Active) ── */}
             {isClient && escrow.status === "active" && (
               <div className="card" style={{ marginBottom: "1rem" }}>
                 <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Cancel Escrow</h2>
@@ -236,10 +309,17 @@ export default function EscrowDetailPage() {
               </div>
             )}
 
-            {isFreelancer && escrow.status === "active" && (
+            {/* ── Freelancer: submit / resubmit ── */}
+            {isFreelancer && canFreelancerSubmit && (
               <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(153,69,255,0.2)" }}>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Submit Your Work</h2>
-                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>Once you submit, the client will review and release payment.</p>
+                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                  {escrow.status === "revisionRequested" ? "Resubmit Your Work" : "Submit Your Work"}
+                </h2>
+                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>
+                  {escrow.status === "revisionRequested"
+                    ? "Address the client's feedback, attach the updated file, and resubmit."
+                    : "Once you submit, the client will review and release payment."}
+                </p>
                 <form onSubmit={handleSubmitWork}>
                   <textarea
                     className="form-textarea"
@@ -289,7 +369,7 @@ export default function EscrowDetailPage() {
                       ? <><span className="spinner" /> Uploading…</>
                       : loading
                       ? <><span className="spinner" /> Submitting…</>
-                      : "Submit Work On-Chain"}
+                      : escrow.status === "revisionRequested" ? "Resubmit Work On-Chain" : "Submit Work On-Chain"}
                   </button>
                 </form>
               </div>

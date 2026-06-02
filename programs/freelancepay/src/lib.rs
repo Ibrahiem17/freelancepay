@@ -36,6 +36,7 @@ pub mod freelancepay {
         escrow.status = EscrowStatus::Active;
         escrow.created_at = clock.unix_timestamp;
         escrow.bump = ctx.bumps.escrow;
+        escrow.revision_note = String::new();
 
         system_program::transfer(
             CpiContext::new(
@@ -54,7 +55,11 @@ pub mod freelancepay {
     pub fn submit_work(ctx: Context<SubmitWork>, work_description: String) -> Result<()> {
         let escrow = &mut ctx.accounts.escrow;
 
-        require!(escrow.status == EscrowStatus::Active, ErrorCode::InvalidStatus);
+        require!(
+            escrow.status == EscrowStatus::Active
+                || escrow.status == EscrowStatus::RevisionRequested,
+            ErrorCode::InvalidStatus
+        );
 
         escrow.work_submission = work_description;
         escrow.status = EscrowStatus::Submitted;
@@ -82,6 +87,17 @@ pub mod freelancepay {
         escrow.status = EscrowStatus::Cancelled;
 
         // close = client transfers all lamports (rent + deposited amount) back to client
+
+        Ok(())
+    }
+
+    pub fn request_revision(ctx: Context<RequestRevision>, message: String) -> Result<()> {
+        let escrow = &mut ctx.accounts.escrow;
+
+        require!(escrow.status == EscrowStatus::Submitted, ErrorCode::InvalidStatus);
+
+        escrow.revision_note = message;
+        escrow.status = EscrowStatus::RevisionRequested;
 
         Ok(())
     }
@@ -157,6 +173,22 @@ pub struct CancelEscrow<'info> {
     #[account(
         mut,
         close = client,
+        seeds = [ESCROW_SEED, client.key().as_ref()],
+        bump = escrow.bump,
+        constraint = escrow.client == client.key() @ ErrorCode::NotClient,
+    )]
+    pub escrow: Account<'info, EscrowAccount>,
+}
+
+// ── RequestRevision ──────────────────────────────────────────────────────────
+
+#[derive(Accounts)]
+pub struct RequestRevision<'info> {
+    #[account(mut)]
+    pub client: Signer<'info>,
+
+    #[account(
+        mut,
         seeds = [ESCROW_SEED, client.key().as_ref()],
         bump = escrow.bump,
         constraint = escrow.client == client.key() @ ErrorCode::NotClient,

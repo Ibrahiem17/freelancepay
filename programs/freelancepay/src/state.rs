@@ -15,6 +15,8 @@ pub struct EscrowAccount {
     pub status: EscrowStatus,
     pub created_at: i64,
     pub bump: u8,
+    #[max_len(300)]
+    pub revision_note: String,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, InitSpace, Debug)]
@@ -23,4 +25,5 @@ pub enum EscrowStatus {
     Submitted,
     Completed,
     Cancelled,
+    RevisionRequested,
 }

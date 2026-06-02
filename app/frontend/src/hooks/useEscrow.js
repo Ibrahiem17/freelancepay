@@ -87,6 +87,24 @@ export function useEscrow() {
     }
   }, [getProgram, wallet.publicKey]);
 
+  const requestRevision = useCallback(async (escrowPDA, message) => {
+    try {
+      const program = getProgram();
+      const signature = await program.methods
+        .requestRevision(message)
+        .accounts({
+          client: wallet.publicKey,
+          escrow: new PublicKey(escrowPDA),
+        })
+        .rpc();
+
+      return { success: true, signature };
+    } catch (err) {
+      console.error("requestRevision:", err);
+      return { success: false, error: err.message };
+    }
+  }, [getProgram, wallet.publicKey]);
+
   const cancelEscrow = useCallback(async (escrowPDA) => {
     try {
       const program = getProgram();
@@ -118,6 +136,7 @@ export function useEscrow() {
         title: a.account.title,
         description: a.account.description,
         workSubmission: a.account.workSubmission,
+        revisionNote: a.account.revisionNote ?? "",
         amount: a.account.amount.toNumber(),
         status: getStatus(a.account.status),
         createdAt: a.account.createdAt.toNumber(),
@@ -141,6 +160,7 @@ export function useEscrow() {
         title: a.account.title,
         description: a.account.description,
         workSubmission: a.account.workSubmission,
+        revisionNote: a.account.revisionNote ?? "",
         amount: a.account.amount.toNumber(),
         status: getStatus(a.account.status),
         createdAt: a.account.createdAt.toNumber(),
@@ -162,6 +182,7 @@ export function useEscrow() {
         title: a.title,
         description: a.description,
         workSubmission: a.workSubmission,
+        revisionNote: a.revisionNote ?? "",
         amount: a.amount.toNumber(),
         status: getStatus(a.status),
         createdAt: a.createdAt.toNumber(),
@@ -177,6 +198,7 @@ export function useEscrow() {
     submitWork,
     approveWork,
     cancelEscrow,
+    requestRevision,
     fetchMyEscrowsAsClient,
     fetchMyEscrowsAsFreelancer,
     fetchEscrowByPDA,

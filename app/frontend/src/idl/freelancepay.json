@@ -87,6 +87,26 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "requestRevision",
+      "discriminator": [205, 195, 75, 171, 242, 149, 90, 14],
+      "accounts": [
+        { "name": "client", "writable": true, "signer": true },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
+              { "kind": "account", "path": "client" }
+            ]
+          }
+        }
+      ],
+      "args": [
+        { "name": "message", "type": "string" }
+      ]
     }
   ],
   "accounts": [
@@ -109,7 +129,8 @@
           { "name": "workSubmission", "type": "string" },
           { "name": "status", "type": { "defined": { "name": "EscrowStatus" } } },
           { "name": "createdAt", "type": "i64" },
-          { "name": "bump", "type": "u8" }
+          { "name": "bump", "type": "u8" },
+          { "name": "revisionNote", "type": "string" }
         ]
       }
     },
@@ -121,7 +142,8 @@
           { "name": "Active" },
           { "name": "Submitted" },
           { "name": "Completed" },
-          { "name": "Cancelled" }
+          { "name": "Cancelled" },
+          { "name": "RevisionRequested" }
         ]
       }
     }

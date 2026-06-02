@@ -13,8 +13,20 @@ import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
+const STATUS_LABELS = {
+  active:            "Active",
+  submitted:         "Submitted",
+  completed:         "Completed",
+  cancelled:         "Cancelled",
+  revisionRequested: "Revision Requested",
+};
+
 function StatusBadge({ status }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
+  return (
+    <span className={`badge badge-${status}`}>
+      {STATUS_LABELS[status] || status}
+    </span>
+  );
 }
 
 function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
@@ -23,9 +35,10 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   const [file, setFile]             = useState(null);
   const [uploading, setUploading]   = useState(false);
   const fileInputRef                = useRef(null);
-  const sol = (escrow.amount / LAMPORTS).toFixed(4);
-
+  const sol    = (escrow.amount / LAMPORTS).toFixed(4);
   const parsed = parseSubmission(escrow.workSubmission);
+
+  const canSubmit = escrow.status === "active" || escrow.status === "revisionRequested";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -77,6 +90,13 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
         <span className="mono" style={{ color: "#94a3b8" }}>{escrow.client.slice(0, 16)}…{escrow.client.slice(-8)}</span>
       </div>
 
+      {escrow.status === "revisionRequested" && escrow.revisionNote && (
+        <div className="revision-box">
+          <strong>Changes requested</strong>
+          <p style={{ marginTop: 4 }}>{escrow.revisionNote}</p>
+        </div>
+      )}
+
       {escrow.workSubmission && (
         <div className="work-box">
           <strong>Your submission</strong>
@@ -105,12 +125,12 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
       <div className="btn-row">
         <Link href={`/escrow/${escrow.pda}`} className="btn btn-outline btn-sm">View Details</Link>
 
-        {escrow.status === "active" && (
+        {canSubmit && (
           <button
             className="btn btn-primary btn-sm"
             onClick={() => setShowForm((s) => !s)}
           >
-            {showForm ? "Cancel" : "✍ Submit Work"}
+            {showForm ? "Cancel" : escrow.status === "revisionRequested" ? "✍ Resubmit Work" : "✍ Submit Work"}
           </button>
         )}
 
@@ -125,9 +145,11 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
         </a>
       </div>
 
-      {escrow.status === "active" && showForm && (
+      {canSubmit && showForm && (
         <form onSubmit={handleSubmit} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
-          <label className="form-label">Work description / delivery link</label>
+          <label className="form-label">
+            {escrow.status === "revisionRequested" ? "Updated work description / delivery link" : "Work description / delivery link"}
+          </label>
           <textarea
             className="form-textarea"
             value={note}
@@ -176,7 +198,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
               ? <><span className="spinner" /> Uploading…</>
               : busy
               ? <><span className="spinner" /> Submitting…</>
-              : "Submit Work On-Chain"}
+              : escrow.status === "revisionRequested" ? "Resubmit Work On-Chain" : "Submit Work On-Chain"}
           </button>
         </form>
       )}
