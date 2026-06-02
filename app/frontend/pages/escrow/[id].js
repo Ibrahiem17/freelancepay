@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 const WalletMultiButton = dynamic(
@@ -10,6 +10,7 @@ import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
 import { useEscrow } from "@/src/hooks/useEscrow";
+import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
@@ -25,10 +26,13 @@ export default function EscrowDetailPage() {
   const { publicKey } = useWallet();
   const { fetchEscrowByPDA, approveWork, cancelEscrow, submitWork } = useEscrow();
 
-  const [escrow, setEscrow]   = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [toast, setToast]     = useState(null);
+  const [escrow, setEscrow]         = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [toast, setToast]           = useState(null);
   const [submitNote, setSubmitNote] = useState("");
+  const [submitFile, setSubmitFile] = useState(null);
+  const [uploading, setUploading]   = useState(false);
+  const submitFileRef               = useRef(null);
   const clearToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
@@ -66,10 +70,34 @@ export default function EscrowDetailPage() {
   async function handleSubmitWork(e) {
     e.preventDefault();
     setLoading(true);
-    const r = await submitWork(escrow.pda, submitNote);
+
+    let ipfsUrl = null, fileName = null;
+    if (submitFile) {
+      setUploading(true);
+      const result = await uploadToIPFS(submitFile);
+      setUploading(false);
+      if (result.error) {
+        setToast({ type: "error", text: result.error });
+        setLoading(false);
+        return;
+      }
+      ipfsUrl = result.url;
+      fileName = result.name;
+    }
+
+    let trimmedNote = submitNote.trim();
+    let encoded = JSON.stringify({ note: trimmedNote, file: ipfsUrl, name: fileName });
+    while (encoded.length > 500 && trimmedNote.length > 0) {
+      trimmedNote = trimmedNote.slice(0, -1);
+      encoded = JSON.stringify({ note: trimmedNote, file: ipfsUrl, name: fileName });
+    }
+
+    const r = await submitWork(escrow.pda, encoded);
     if (r.success) {
       setToast({ type: "success", text: "Work submitted on-chain!", signature: r.signature });
       setSubmitNote("");
+      setSubmitFile(null);
+      if (submitFileRef.current) submitFileRef.current.value = "";
       await reload();
     } else {
       setToast({ type: "error", text: r.error });
@@ -80,6 +108,8 @@ export default function EscrowDetailPage() {
   const isClient     = escrow && publicKey && escrow.client === publicKey.toBase58();
   const isFreelancer = escrow && publicKey && escrow.freelancer === publicKey.toBase58();
   const isCancelled  = escrow?.status === "cancelled";
+
+  const submission = escrow?.workSubmission ? parseSubmission(escrow.workSubmission) : null;
 
   return (
     <Layout title="Escrow Detail">
@@ -117,7 +147,6 @@ export default function EscrowDetailPage() {
                 <p style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "#94a3b8", lineHeight: 1.6 }}>{escrow.description}</p>
               )}
 
-              {/* Timeline */}
               {!isCancelled && (
                 <div style={{ display: "flex", gap: 0, marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid var(--border)" }}>
                   {TIMELINE.map((step, i) => {
@@ -166,10 +195,23 @@ export default function EscrowDetailPage() {
             </div>
 
             {/* ── Work submission ── */}
-            {escrow.workSubmission && (
+            {submission && (
               <div className="card" style={{ marginBottom: "1rem" }}>
                 <h2 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.75rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Work Submitted</h2>
-                <p style={{ fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.6 }}>{escrow.workSubmission}</p>
+                <p style={{ fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.6 }}>{submission.note}</p>
+                {submission.file && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <a
+                      className="btn-download"
+                      href={submission.file}
+                      download={submission.name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      ↓ {submission.name || "Download Deliverable"}
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
@@ -206,8 +248,48 @@ export default function EscrowDetailPage() {
                     placeholder="Describe deliverables, include GitHub URLs, hosted links, Figma, etc."
                     required
                   />
-                  <button type="submit" className="btn btn-primary" style={{ marginTop: "0.75rem" }} disabled={loading || !submitNote.trim()}>
-                    {loading ? <><span className="spinner" /> Submitting…</> : "Submit Work On-Chain"}
+
+                  <div className="file-attach">
+                    <input
+                      type="file"
+                      ref={submitFileRef}
+                      style={{ display: "none" }}
+                      onChange={(e) => setSubmitFile(e.target.files?.[0] || null)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => submitFileRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      📎 Attach File
+                    </button>
+                    {submitFile && (
+                      <>
+                        <span className="file-name">{submitFile.name}</span>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.75rem", flexShrink: 0 }}
+                          onClick={() => { setSubmitFile(null); if (submitFileRef.current) submitFileRef.current.value = ""; }}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ marginTop: "0.75rem" }}
+                    disabled={loading || uploading || !submitNote.trim()}
+                  >
+                    {uploading
+                      ? <><span className="spinner" /> Uploading…</>
+                      : loading
+                      ? <><span className="spinner" /> Submitting…</>
+                      : "Submit Work On-Chain"}
                   </button>
                 </form>
               </div>

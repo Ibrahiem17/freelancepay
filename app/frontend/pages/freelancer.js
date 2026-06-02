@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 const WalletMultiButton = dynamic(
@@ -9,6 +9,7 @@ import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
 import { useEscrow } from "@/src/hooks/useEscrow";
+import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
@@ -16,16 +17,44 @@ function StatusBadge({ status }) {
   return <span className={`badge badge-${status}`}>{status}</span>;
 }
 
-function EscrowCard({ escrow, onSubmitWork, busy }) {
-  const [showForm, setShowForm] = useState(false);
-  const [note, setNote]         = useState("");
+function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
+  const [showForm, setShowForm]     = useState(false);
+  const [note, setNote]             = useState("");
+  const [file, setFile]             = useState(null);
+  const [uploading, setUploading]   = useState(false);
+  const fileInputRef                = useRef(null);
   const sol = (escrow.amount / LAMPORTS).toFixed(4);
+
+  const parsed = parseSubmission(escrow.workSubmission);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!note.trim()) return;
-    await onSubmitWork(escrow.pda, note);
+
+    let ipfsUrl = null, fileName = null;
+    if (file) {
+      setUploading(true);
+      const result = await uploadToIPFS(file);
+      setUploading(false);
+      if (result.error) {
+        onError(result.error);
+        return;
+      }
+      ipfsUrl = result.url;
+      fileName = result.name;
+    }
+
+    let trimmedNote = note.trim();
+    let encoded = JSON.stringify({ note: trimmedNote, file: ipfsUrl, name: fileName });
+    while (encoded.length > 500 && trimmedNote.length > 0) {
+      trimmedNote = trimmedNote.slice(0, -1);
+      encoded = JSON.stringify({ note: trimmedNote, file: ipfsUrl, name: fileName });
+    }
+
+    await onSubmitWork(escrow.pda, encoded);
     setNote("");
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowForm(false);
   }
 
@@ -51,7 +80,19 @@ function EscrowCard({ escrow, onSubmitWork, busy }) {
       {escrow.workSubmission && (
         <div className="work-box">
           <strong>Your submission</strong>
-          <p style={{ marginTop: 4 }}>{escrow.workSubmission}</p>
+          <p style={{ marginTop: 4 }}>{parsed.note}</p>
+          {parsed.file && (
+            <a
+              className="btn-download"
+              href={parsed.file}
+              download={parsed.name}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ marginTop: "0.6rem" }}
+            >
+              ↓ {parsed.name || "Download Deliverable"}
+            </a>
+          )}
         </div>
       )}
 
@@ -94,8 +135,48 @@ function EscrowCard({ escrow, onSubmitWork, busy }) {
             placeholder="Describe what you delivered, include links to GitHub, Figma, hosted URLs…"
             required
           />
-          <button type="submit" className="btn btn-primary btn-sm" style={{ marginTop: "0.6rem" }} disabled={busy || !note.trim()}>
-            {busy ? <><span className="spinner" /> Submitting…</> : "Submit Work On-Chain"}
+
+          <div className="file-attach">
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              📎 Attach File
+            </button>
+            {file && (
+              <>
+                <span className="file-name">{file.name}</span>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ padding: "4px 8px", fontSize: "0.75rem", flexShrink: 0 }}
+                  onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                >
+                  ✕
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm"
+            style={{ marginTop: "0.6rem" }}
+            disabled={busy || uploading || !note.trim()}
+          >
+            {uploading
+              ? <><span className="spinner" /> Uploading…</>
+              : busy
+              ? <><span className="spinner" /> Submitting…</>
+              : "Submit Work On-Chain"}
           </button>
         </form>
       )}
@@ -107,10 +188,10 @@ export default function FreelancerPage() {
   const { publicKey } = useWallet();
   const { submitWork, fetchMyEscrowsAsFreelancer } = useEscrow();
 
-  const [escrows, setEscrows] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [escrows, setEscrows]   = useState([]);
+  const [loading, setLoading]   = useState(false);
   const [fetching, setFetching] = useState(false);
-  const [toast, setToast]     = useState(null);
+  const [toast, setToast]       = useState(null);
   const clearToast = useCallback(() => setToast(null), []);
 
   const loadEscrows = useCallback(async () => {
@@ -123,9 +204,9 @@ export default function FreelancerPage() {
 
   useEffect(() => { loadEscrows(); }, [loadEscrows]);
 
-  async function handleSubmitWork(pda, description) {
+  async function handleSubmitWork(pda, encodedDescription) {
     setLoading(true);
-    const r = await submitWork(pda, description);
+    const r = await submitWork(pda, encodedDescription);
     if (r.success) {
       setToast({ type: "success", text: "Work submitted on-chain! Waiting for client approval.", signature: r.signature });
       await loadEscrows();
@@ -156,7 +237,6 @@ export default function FreelancerPage() {
           </div>
         ) : (
           <>
-            {/* ── Stats strip ── */}
             {escrows.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "var(--border)", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", marginBottom: "1.5rem" }}>
                 {[
@@ -186,7 +266,13 @@ export default function FreelancerPage() {
               </div>
             ) : (
               escrows.map((e) => (
-                <EscrowCard key={e.pda} escrow={e} onSubmitWork={handleSubmitWork} busy={loading} />
+                <EscrowCard
+                  key={e.pda}
+                  escrow={e}
+                  onSubmitWork={handleSubmitWork}
+                  onError={(msg) => setToast({ type: "error", text: msg })}
+                  busy={loading}
+                />
               ))
             )}
           </>

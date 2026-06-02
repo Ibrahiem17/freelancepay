@@ -9,6 +9,7 @@ import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
 import { useEscrow } from "@/src/hooks/useEscrow";
+import { parseSubmission } from "@/utils/ipfs";
 
 const LAMPORTS = 1_000_000_000;
 
@@ -20,6 +21,7 @@ function EscrowCard({ escrow, onApprove, onCancel, busy }) {
   const sol = (escrow.amount / LAMPORTS).toFixed(4);
   const isActive    = escrow.status === "active";
   const isSubmitted = escrow.status === "submitted";
+  const parsed = parseSubmission(escrow.workSubmission);
 
   return (
     <div className="card" style={{ marginBottom: "1rem" }}>
@@ -43,7 +45,19 @@ function EscrowCard({ escrow, onApprove, onCancel, busy }) {
       {escrow.workSubmission && (
         <div className="work-box">
           <strong>Work submitted</strong>
-          <p style={{ marginTop: 4 }}>{escrow.workSubmission}</p>
+          <p style={{ marginTop: 4 }}>{parsed.note}</p>
+          {parsed.file && (
+            <a
+              className="btn-download"
+              href={parsed.file}
+              download={parsed.name}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ marginTop: "0.6rem" }}
+            >
+              ↓ {parsed.name || "Download Deliverable"}
+            </a>
+          )}
         </div>
       )}
 
