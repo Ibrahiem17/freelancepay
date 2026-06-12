@@ -37,7 +37,6 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   const fileInputRef                = useRef(null);
   const sol    = (escrow.amount / LAMPORTS).toFixed(4);
   const parsed = parseSubmission(escrow.workSubmission);
-
   const canSubmit = escrow.status === "active" || escrow.status === "revisionRequested";
 
   async function handleSubmit(e) {
@@ -49,11 +48,8 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
       setUploading(true);
       const result = await uploadToIPFS(file);
       setUploading(false);
-      if (result.error) {
-        onError(result.error);
-        return;
-      }
-      ipfsUrl = result.url;
+      if (result.error) { onError(result.error); return; }
+      ipfsUrl  = result.url;
       fileName = result.name;
     }
 
@@ -72,7 +68,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: "1rem" }}>
+    <div className="card" data-reveal="rise" style={{ marginBottom: "1rem" }}>
       <div className="card-header">
         <div>
           <div className="card-title">{escrow.title}</div>
@@ -82,25 +78,27 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
       </div>
 
       {escrow.description && (
-        <p style={{ fontSize: "0.88rem", color: "#94a3b8", marginTop: "0.5rem", lineHeight: 1.5 }}>{escrow.description}</p>
+        <p style={{ fontSize: "0.88rem", color: "var(--ink-soft)", marginTop: "0.5rem", lineHeight: 1.55, fontWeight: 600 }}>
+          {escrow.description}
+        </p>
       )}
 
-      <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "#64748b" }}>
+      <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--ink-soft)", fontWeight: 600 }}>
         Client &nbsp;
-        <span className="mono" style={{ color: "#94a3b8" }}>{escrow.client.slice(0, 16)}…{escrow.client.slice(-8)}</span>
+        <span className="mono" style={{ color: "var(--ink-soft)" }}>{escrow.client.slice(0, 16)}…{escrow.client.slice(-8)}</span>
       </div>
 
       {escrow.status === "revisionRequested" && escrow.revisionNote && (
         <div className="revision-box">
           <strong>Changes requested</strong>
-          <p style={{ marginTop: 4 }}>{escrow.revisionNote}</p>
+          <p style={{ marginTop: 4, margin: "4px 0 0" }}>{escrow.revisionNote}</p>
         </div>
       )}
 
       {escrow.workSubmission && (
         <div className="work-box">
           <strong>Your submission</strong>
-          <p style={{ marginTop: 4 }}>{parsed.note}</p>
+          <p style={{ marginTop: 4, margin: "4px 0 0" }}>{parsed.note}</p>
           {parsed.file && (
             <a
               className="btn-download"
@@ -117,7 +115,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
       )}
 
       {escrow.status === "completed" && (
-        <div style={{ marginTop: "0.75rem", color: "#14F195", fontSize: "0.9rem", fontWeight: 600 }}>
+        <div style={{ marginTop: "0.75rem", color: "var(--leaf)", fontSize: "0.9rem", fontWeight: 700 }}>
           ⚡ Payment released to your wallet
         </div>
       )}
@@ -146,7 +144,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
       </div>
 
       {canSubmit && showForm && (
-        <form onSubmit={handleSubmit} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+        <form onSubmit={handleSubmit} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2.5px dashed var(--line)" }}>
           <label className="form-label">
             {escrow.status === "revisionRequested" ? "Updated work description / delivery link" : "Work description / delivery link"}
           </label>
@@ -247,8 +245,12 @@ export default function FreelancerPage() {
       <Toast msg={toast} onClose={clearToast} />
       <div className="page">
         <div style={{ marginBottom: "1.75rem" }}>
-          <h1 style={{ fontSize: "1.6rem", fontWeight: 700 }}>Freelancer Dashboard</h1>
-          <p className="muted" style={{ marginTop: 4, fontSize: "0.9rem" }}>View contracts assigned to your wallet and submit work.</p>
+          <h1 data-enter style={{ fontSize: "var(--fs-h2)", fontWeight: 700, fontFamily: "var(--font-display)" }}>
+            Freelancer Dashboard
+          </h1>
+          <p style={{ marginTop: 4, fontSize: "0.9rem", color: "var(--ink-soft)", fontWeight: 600 }}>
+            View contracts assigned to your wallet and submit work.
+          </p>
         </div>
 
         {!publicKey ? (
@@ -260,15 +262,18 @@ export default function FreelancerPage() {
         ) : (
           <>
             {escrows.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "var(--border)", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", marginBottom: "1.5rem" }}>
+              <div
+                data-reveal="zoom"
+                style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "var(--line)", borderRadius: "var(--r-md)", overflow: "hidden", border: "2.5px solid var(--line)", marginBottom: "1.5rem" }}
+              >
                 {[
-                  { label: "Active", count: activeCount, color: "#3b82f6" },
-                  { label: "Pending approval", count: submittedCount, color: "#f59e0b" },
-                  { label: "Completed", count: completedCount, color: "#14F195" },
+                  { label: "Active",          count: activeCount,    color: "var(--sky)"    },
+                  { label: "Pending approval", count: submittedCount, color: "var(--butter)" },
+                  { label: "Completed",        count: completedCount, color: "var(--sage)"   },
                 ].map(({ label, count, color }) => (
-                  <div key={label} style={{ background: "var(--bg-card)", padding: "1rem", textAlign: "center" }}>
-                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color, fontFamily: "'Courier New', monospace" }}>{count}</div>
-                    <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 2 }}>{label}</div>
+                  <div key={label} style={{ background: "var(--paper)", padding: "1rem", textAlign: "center" }}>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color, fontFamily: "var(--font-display)" }}>{count}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", marginTop: 2, fontWeight: 600 }}>{label}</div>
                   </div>
                 ))}
               </div>

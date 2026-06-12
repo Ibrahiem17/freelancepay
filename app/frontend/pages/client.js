@@ -46,7 +46,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: "1rem" }}>
+    <div className="card" data-reveal="rise" style={{ marginBottom: "1rem" }}>
       <div className="card-header">
         <div>
           <div className="card-title">{escrow.title}</div>
@@ -56,18 +56,20 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
       </div>
 
       {escrow.description && (
-        <p style={{ fontSize: "0.88rem", color: "#94a3b8", marginTop: "0.5rem", lineHeight: 1.5 }}>{escrow.description}</p>
+        <p style={{ fontSize: "0.88rem", color: "var(--ink-soft)", marginTop: "0.5rem", lineHeight: 1.55, fontWeight: 600 }}>
+          {escrow.description}
+        </p>
       )}
 
-      <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "#64748b" }}>
+      <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--ink-soft)", fontWeight: 600 }}>
         Freelancer &nbsp;
-        <span className="mono" style={{ color: "#94a3b8" }}>{escrow.freelancer.slice(0, 16)}…{escrow.freelancer.slice(-8)}</span>
+        <span className="mono" style={{ color: "var(--ink-soft)" }}>{escrow.freelancer.slice(0, 16)}…{escrow.freelancer.slice(-8)}</span>
       </div>
 
       {escrow.workSubmission && (
         <div className="work-box">
           <strong>Work submitted</strong>
-          <p style={{ marginTop: 4 }}>{parsed.note}</p>
+          <p style={{ marginTop: 4, margin: "4px 0 0" }}>{parsed.note}</p>
           {parsed.file && (
             <a
               className="btn-download"
@@ -86,7 +88,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
       {escrow.status === "revisionRequested" && escrow.revisionNote && (
         <div className="revision-box">
           <strong>Revision requested</strong>
-          <p style={{ marginTop: 4 }}>{escrow.revisionNote}</p>
+          <p style={{ marginTop: 4, margin: "4px 0 0" }}>{escrow.revisionNote}</p>
         </div>
       )}
 
@@ -102,7 +104,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
         {isSubmitted && (
           <button
             className="btn btn-sm"
-            style={{ background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+            style={{ background: "var(--peach-lo)", color: "var(--orange)", border: "2.5px solid var(--orange)" }}
             onClick={() => setShowRevision((s) => !s)}
             disabled={busy}
           >
@@ -128,7 +130,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
       </div>
 
       {isSubmitted && showRevision && (
-        <form onSubmit={handleRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+        <form onSubmit={handleRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2.5px dashed var(--line)" }}>
           <label className="form-label">Describe the changes needed</label>
           <textarea
             className="form-textarea"
@@ -140,7 +142,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
           <button
             type="submit"
             className="btn btn-sm"
-            style={{ marginTop: "0.6rem", background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+            style={{ marginTop: "0.6rem", background: "var(--peach-lo)", color: "var(--orange)", border: "2.5px solid var(--orange)" }}
             disabled={busy || !revMsg.trim()}
           >
             {busy ? <><span className="spinner" /> Sending…</> : "Send Revision Request"}
@@ -218,7 +220,7 @@ export default function ClientPage() {
     setLoading(true);
     const r = await requestRevision(escrow.pda, message);
     if (r.success) {
-      setToast({ type: "success", text: "Revision requested. The freelancer will be notified.", signature: r.signature });
+      setToast({ type: "success", text: "Revision requested. Check your freelancer dashboard.", signature: r.signature });
       await loadEscrows();
     } else {
       setToast({ type: "error", text: r.error });
@@ -231,8 +233,12 @@ export default function ClientPage() {
       <Toast msg={toast} onClose={clearToast} />
       <div className="page">
         <div style={{ marginBottom: "1.75rem" }}>
-          <h1 style={{ fontSize: "1.6rem", fontWeight: 700 }}>Client Dashboard</h1>
-          <p className="muted" style={{ marginTop: 4, fontSize: "0.9rem" }}>Create escrows and manage your freelance contracts.</p>
+          <h1 data-enter style={{ fontSize: "var(--fs-h2)", fontWeight: 700, fontFamily: "var(--font-display)" }}>
+            Client Dashboard
+          </h1>
+          <p style={{ marginTop: 4, fontSize: "0.9rem", color: "var(--ink-soft)", fontWeight: 600 }}>
+            Create escrows and manage your freelance contracts.
+          </p>
         </div>
 
         {!publicKey ? (
@@ -245,7 +251,9 @@ export default function ClientPage() {
           <>
             {/* ── Create form ── */}
             <div className="card" style={{ marginBottom: "2rem" }}>
-              <h2 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1.25rem" }}>Create New Escrow</h2>
+              <h2 data-enter style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.25rem", fontFamily: "var(--font-display)" }}>
+                Create New Escrow
+              </h2>
               <form onSubmit={handleCreate}>
                 <div className="form-group">
                   <label className="form-label">Project title *</label>

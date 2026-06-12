@@ -34,19 +34,17 @@ const TIMELINE = ["active", "submitted", "completed"];
 
 export default function EscrowDetailPage() {
   const router = useRouter();
-  const { id }   = router.query;
+  const { id } = router.query;
   const { publicKey } = useWallet();
   const { fetchEscrowByPDA, approveWork, cancelEscrow, submitWork, requestRevision } = useEscrow();
 
-  const [escrow, setEscrow]           = useState(null);
-  const [loading, setLoading]         = useState(false);
-  const [toast, setToast]             = useState(null);
-  // freelancer submit state
-  const [submitNote, setSubmitNote]   = useState("");
-  const [submitFile, setSubmitFile]   = useState(null);
-  const [uploading, setUploading]     = useState(false);
-  const submitFileRef                 = useRef(null);
-  // client revision state
+  const [escrow, setEscrow]             = useState(null);
+  const [loading, setLoading]           = useState(false);
+  const [toast, setToast]               = useState(null);
+  const [submitNote, setSubmitNote]     = useState("");
+  const [submitFile, setSubmitFile]     = useState(null);
+  const [uploading, setUploading]       = useState(false);
+  const submitFileRef                   = useRef(null);
   const [showRevision, setShowRevision] = useState(false);
   const [revMsg, setRevMsg]             = useState("");
   const clearToast = useCallback(() => setToast(null), []);
@@ -89,7 +87,7 @@ export default function EscrowDetailPage() {
     setLoading(true);
     const r = await requestRevision(escrow.pda, revMsg.trim());
     if (r.success) {
-      setToast({ type: "success", text: "Revision requested. The freelancer will be notified.", signature: r.signature });
+      setToast({ type: "success", text: "Revision requested. The freelancer can see your feedback.", signature: r.signature });
       setRevMsg("");
       setShowRevision(false);
       await reload();
@@ -113,7 +111,7 @@ export default function EscrowDetailPage() {
         setLoading(false);
         return;
       }
-      ipfsUrl = result.url;
+      ipfsUrl  = result.url;
       fileName = result.name;
     }
 
@@ -137,21 +135,22 @@ export default function EscrowDetailPage() {
     setLoading(false);
   }
 
-  const isClient     = escrow && publicKey && escrow.client === publicKey.toBase58();
-  const isFreelancer = escrow && publicKey && escrow.freelancer === publicKey.toBase58();
-  const isCancelled  = escrow?.status === "cancelled";
+  const isClient            = escrow && publicKey && escrow.client     === publicKey.toBase58();
+  const isFreelancer        = escrow && publicKey && escrow.freelancer === publicKey.toBase58();
+  const isCancelled         = escrow?.status === "cancelled";
   const canFreelancerSubmit = escrow?.status === "active" || escrow?.status === "revisionRequested";
-
-  const submission = escrow?.workSubmission ? parseSubmission(escrow.workSubmission) : null;
+  const submission          = escrow?.workSubmission ? parseSubmission(escrow.workSubmission) : null;
 
   return (
     <Layout title="Escrow Detail">
       <Toast msg={toast} onClose={clearToast} />
       <div className="page">
-        <div style={{ marginBottom: "1.25rem" }}>
-          <Link href="/" className="muted" style={{ fontSize: "0.85rem" }}>← Home</Link>
-          {isClient && <Link href="/client" className="muted" style={{ fontSize: "0.85rem", marginLeft: "1rem" }}>← My Escrows</Link>}
-          {isFreelancer && <Link href="/freelancer" className="muted" style={{ fontSize: "0.85rem", marginLeft: "1rem" }}>← My Contracts</Link>}
+
+        {/* ── Back links ── */}
+        <div style={{ marginBottom: "1.25rem", display: "flex", gap: "1rem" }}>
+          <Link href="/" style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← Home</Link>
+          {isClient     && <Link href="/client"     style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← My Escrows</Link>}
+          {isFreelancer && <Link href="/freelancer" style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← My Contracts</Link>}
         </div>
 
         {!publicKey ? (
@@ -163,37 +162,63 @@ export default function EscrowDetailPage() {
           <div className="empty-state">Loading escrow data…</div>
         ) : (
           <>
-            {/* ── Header ── */}
-            <div className="card" style={{ marginBottom: "1rem" }}>
+            {/* ── Header card ── */}
+            <div className="card" data-enter style={{ marginBottom: "1rem" }}>
               <div className="card-header">
                 <div>
-                  <h1 style={{ fontSize: "1.4rem", fontWeight: 700 }}>{escrow.title}</h1>
+                  <h1 style={{ fontSize: "1.4rem", fontWeight: 700, fontFamily: "var(--font-display)", color: "var(--ink)" }}>
+                    {escrow.title}
+                  </h1>
                   <div style={{ marginTop: 8 }}><StatusBadge status={escrow.status} /></div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="card-amount">{(escrow.amount / LAMPORTS).toFixed(4)} SOL</div>
-                  <div className="muted" style={{ fontSize: "0.75rem", marginTop: 4 }}>locked in escrow</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 4 }}>locked in escrow</div>
                 </div>
               </div>
 
               {escrow.description && (
-                <p style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "#94a3b8", lineHeight: 1.6 }}>{escrow.description}</p>
+                <p style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "var(--ink-soft)", lineHeight: 1.65, fontWeight: 600 }}>
+                  {escrow.description}
+                </p>
               )}
 
+              {/* ── Progress timeline ── */}
               {!isCancelled && (
-                <div style={{ display: "flex", gap: 0, marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", gap: 0, marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "2.5px dashed var(--line)" }}>
                   {TIMELINE.map((step, i) => {
                     const done    = TIMELINE.indexOf(escrow.status) >= i;
                     const current = escrow.status === step;
                     return (
                       <div key={step} style={{ flex: 1, textAlign: "center", position: "relative" }}>
                         {i > 0 && (
-                          <div style={{ position: "absolute", top: 11, right: "50%", left: "-50%", height: 2, background: done ? "var(--green)" : "var(--border)" }} />
+                          <div style={{
+                            position: "absolute", top: 10, right: "50%", left: "-50%",
+                            height: 3, borderRadius: 2,
+                            background: done ? "var(--sage)" : "var(--line)",
+                          }} />
                         )}
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", margin: "0 auto 6px", background: done ? "var(--green)" : "var(--border)", border: current ? "2px solid #14F195" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: done ? "#0a0f1e" : "#64748b", position: "relative", zIndex: 1 }}>
+                        <div style={{
+                          width: 22, height: 22, borderRadius: "50%",
+                          margin: "0 auto 6px",
+                          background: done ? "var(--sage)" : "var(--line)",
+                          border: current ? "3px solid var(--leaf)" : "2.5px solid var(--ink)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "0.7rem", fontWeight: 800,
+                          color: done ? "var(--ink)" : "var(--ink-soft)",
+                          position: "relative", zIndex: 1,
+                          fontFamily: "var(--font-body)",
+                        }}>
                           {done ? "✓" : i + 1}
                         </div>
-                        <div style={{ fontSize: "0.72rem", color: done ? "#14F195" : "#64748b", textTransform: "capitalize" }}>{step}</div>
+                        <div style={{
+                          fontSize: "0.72rem", fontWeight: 700,
+                          color: done ? "var(--leaf)" : "var(--ink-soft)",
+                          textTransform: "capitalize",
+                          fontFamily: "var(--font-display)",
+                        }}>
+                          {step}
+                        </div>
                       </div>
                     );
                   })}
@@ -201,18 +226,20 @@ export default function EscrowDetailPage() {
               )}
             </div>
 
-            {/* ── Details ── */}
-            <div className="card" style={{ marginBottom: "1rem" }}>
-              <h2 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "1rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Contract Details</h2>
+            {/* ── Contract details ── */}
+            <div className="card" data-reveal style={{ marginBottom: "1rem" }}>
+              <h2 style={{ fontSize: "0.85rem", fontWeight: 800, marginBottom: "1rem", color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
+                Contract Details
+              </h2>
               {[
                 ["PDA Address", escrow.pda],
                 ["Client",      escrow.client],
                 ["Freelancer",  escrow.freelancer],
                 ["Created",     new Date(escrow.createdAt * 1000).toLocaleString()],
               ].map(([label, value]) => (
-                <div key={label} style={{ display: "flex", padding: "8px 0", borderBottom: "1px solid var(--border)", gap: "1rem" }}>
-                  <div style={{ minWidth: 90, color: "#64748b", fontSize: "0.82rem" }}>{label}</div>
-                  <div className="mono" style={{ fontSize: "0.8rem", color: "#94a3b8", wordBreak: "break-all" }}>{value}</div>
+                <div key={label} style={{ display: "flex", padding: "8px 0", borderBottom: "2px dashed var(--line)", gap: "1rem" }}>
+                  <div style={{ minWidth: 90, color: "var(--ink-soft)", fontSize: "0.82rem", fontWeight: 600 }}>{label}</div>
+                  <div className="mono" style={{ fontSize: "0.8rem", color: "var(--ink-soft)", wordBreak: "break-all" }}>{value}</div>
                 </div>
               ))}
               <div style={{ marginTop: "0.75rem" }}>
@@ -227,19 +254,23 @@ export default function EscrowDetailPage() {
               </div>
             </div>
 
-            {/* ── Revision note (visible to both parties) ── */}
-            {escrow.revisionNote && (escrow.status === "revisionRequested") && (
-              <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(249,115,22,0.25)" }}>
-                <h2 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Revision Requested</h2>
-                <p style={{ fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.6 }}>{escrow.revisionNote}</p>
+            {/* ── Revision note ── */}
+            {escrow.revisionNote && escrow.status === "revisionRequested" && (
+              <div className="card" data-reveal style={{ marginBottom: "1rem", border: "3px dashed rgba(201,116,74,0.45)" }}>
+                <h2 style={{ fontSize: "0.85rem", fontWeight: 800, marginBottom: "0.75rem", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
+                  Revision Requested
+                </h2>
+                <p style={{ fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.65, fontWeight: 600 }}>{escrow.revisionNote}</p>
               </div>
             )}
 
             {/* ── Work submission ── */}
             {submission && (
-              <div className="card" style={{ marginBottom: "1rem" }}>
-                <h2 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.75rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Work Submitted</h2>
-                <p style={{ fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.6 }}>{submission.note}</p>
+              <div className="card" data-reveal style={{ marginBottom: "1rem" }}>
+                <h2 style={{ fontSize: "0.85rem", fontWeight: 800, marginBottom: "0.75rem", color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
+                  Work Submitted
+                </h2>
+                <p style={{ fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.65, fontWeight: 600 }}>{submission.note}</p>
                 {submission.file && (
                   <div style={{ marginTop: "1rem" }}>
                     <a
@@ -258,16 +289,20 @@ export default function EscrowDetailPage() {
 
             {/* ── Client: approve + revision ── */}
             {isClient && escrow.status === "submitted" && (
-              <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(20,241,149,0.2)" }}>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Review Delivery</h2>
-                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>Approve to release payment, or request changes from the freelancer.</p>
+              <div className="card" data-reveal style={{ marginBottom: "1rem", border: "3px dashed var(--sage)" }}>
+                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem", fontFamily: "var(--font-display)" }}>
+                  Review Delivery
+                </h2>
+                <p style={{ fontSize: "0.87rem", color: "var(--ink-soft)", marginBottom: "1rem", fontWeight: 600 }}>
+                  Approve to release payment, or request changes from the freelancer.
+                </p>
                 <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
                   <button className="btn btn-success" onClick={handleApprove} disabled={loading}>
                     {loading ? <><span className="spinner" /> Processing…</> : "✓ Approve & Release Payment"}
                   </button>
                   <button
                     className="btn"
-                    style={{ background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+                    style={{ background: "var(--peach-lo)", color: "var(--orange)", border: "2.5px solid var(--orange)" }}
                     onClick={() => setShowRevision((s) => !s)}
                     disabled={loading}
                   >
@@ -276,7 +311,7 @@ export default function EscrowDetailPage() {
                 </div>
 
                 {showRevision && (
-                  <form onSubmit={handleRequestRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+                  <form onSubmit={handleRequestRevision} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2.5px dashed var(--line)" }}>
                     <label className="form-label">Describe the changes needed</label>
                     <textarea
                       className="form-textarea"
@@ -288,7 +323,7 @@ export default function EscrowDetailPage() {
                     <button
                       type="submit"
                       className="btn"
-                      style={{ marginTop: "0.75rem", background: "rgba(249,115,22,0.12)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}
+                      style={{ marginTop: "0.75rem", background: "var(--peach-lo)", color: "var(--orange)", border: "2.5px solid var(--orange)" }}
                       disabled={loading || !revMsg.trim()}
                     >
                       {loading ? <><span className="spinner" /> Sending…</> : "Send Revision Request"}
@@ -300,9 +335,13 @@ export default function EscrowDetailPage() {
 
             {/* ── Client: cancel (only when Active) ── */}
             {isClient && escrow.status === "active" && (
-              <div className="card" style={{ marginBottom: "1rem" }}>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Cancel Escrow</h2>
-                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>Cancel the contract and refund the SOL to your wallet.</p>
+              <div className="card" data-reveal style={{ marginBottom: "1rem" }}>
+                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem", fontFamily: "var(--font-display)" }}>
+                  Cancel Escrow
+                </h2>
+                <p style={{ fontSize: "0.87rem", color: "var(--ink-soft)", marginBottom: "1rem", fontWeight: 600 }}>
+                  Cancel the contract and refund the SOL to your wallet.
+                </p>
                 <button className="btn btn-danger" onClick={handleCancel} disabled={loading}>
                   {loading ? <><span className="spinner" /> Processing…</> : "✕ Cancel & Refund"}
                 </button>
@@ -311,11 +350,11 @@ export default function EscrowDetailPage() {
 
             {/* ── Freelancer: submit / resubmit ── */}
             {isFreelancer && canFreelancerSubmit && (
-              <div className="card" style={{ marginBottom: "1rem", border: "1px solid rgba(153,69,255,0.2)" }}>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+              <div className="card" data-reveal style={{ marginBottom: "1rem", border: "3px dashed var(--lav)" }}>
+                <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem", fontFamily: "var(--font-display)" }}>
                   {escrow.status === "revisionRequested" ? "Resubmit Your Work" : "Submit Your Work"}
                 </h2>
-                <p style={{ fontSize: "0.87rem", color: "#94a3b8", marginBottom: "1rem" }}>
+                <p style={{ fontSize: "0.87rem", color: "var(--ink-soft)", marginBottom: "1rem", fontWeight: 600 }}>
                   {escrow.status === "revisionRequested"
                     ? "Address the client's feedback, attach the updated file, and resubmit."
                     : "Once you submit, the client will review and release payment."}
@@ -375,11 +414,20 @@ export default function EscrowDetailPage() {
               </div>
             )}
 
+            {/* ── Completed state ── */}
             {escrow.status === "completed" && (
-              <div className="card" style={{ border: "1px solid rgba(20,241,149,0.25)", textAlign: "center", padding: "2rem" }}>
-                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚡</div>
-                <h2 style={{ color: "#14F195", fontWeight: 700 }}>Contract Complete</h2>
-                <p style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: "0.5rem" }}>Payment was released to the freelancer&apos;s wallet.</p>
+              <div
+                className="card"
+                data-reveal="pop"
+                style={{ border: "3px dashed var(--leaf)", textAlign: "center", padding: "2.5rem", background: "var(--sage-lo)" }}
+              >
+                <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>⚡</div>
+                <h2 style={{ color: "var(--leaf)", fontWeight: 700, fontFamily: "var(--font-display)", fontSize: "1.6rem" }}>
+                  Contract Complete
+                </h2>
+                <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem", marginTop: "0.5rem", fontWeight: 600 }}>
+                  Payment was released to the freelancer&apos;s wallet.
+                </p>
               </div>
             )}
           </>
