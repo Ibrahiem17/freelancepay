@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
+import { Check, X, RotateCcw, Paperclip, Download, Zap } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -209,7 +210,9 @@ export default function EscrowDetailPage() {
                           position: "relative", zIndex: 1,
                           fontFamily: "var(--font-body)",
                         }}>
-                          {done ? "✓" : i + 1}
+                          {done
+                            ? <Check size={11} strokeWidth={2.8} aria-hidden />
+                            : i + 1}
                         </div>
                         <div style={{
                           fontSize: "0.72rem", fontWeight: 700,
@@ -280,7 +283,8 @@ export default function EscrowDetailPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      ↓ {submission.name || "Download Deliverable"}
+                      <Download size={13} strokeWidth={2.2} className="icon" aria-hidden />
+                      {submission.name || "Download Deliverable"}
                     </a>
                   </div>
                 )}
@@ -298,7 +302,9 @@ export default function EscrowDetailPage() {
                 </p>
                 <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
                   <button className="btn btn-success" onClick={handleApprove} disabled={loading}>
-                    {loading ? <><span className="spinner" /> Processing…</> : "✓ Approve & Release Payment"}
+                    {loading
+                      ? <><span className="spinner" /> Processing…</>
+                      : <><Check size={15} strokeWidth={2.2} className="icon" aria-hidden /> Approve &amp; Release Payment</>}
                   </button>
                   <button
                     className="btn"
@@ -306,7 +312,9 @@ export default function EscrowDetailPage() {
                     onClick={() => setShowRevision((s) => !s)}
                     disabled={loading}
                   >
-                    {showRevision ? "Cancel" : "↩ Request Revision"}
+                    {showRevision
+                      ? <><X size={14} strokeWidth={2.2} className="icon" aria-hidden /> Cancel</>
+                      : <><RotateCcw size={14} strokeWidth={2.2} className="icon" aria-hidden /> Request Revision</>}
                   </button>
                 </div>
 
@@ -343,7 +351,9 @@ export default function EscrowDetailPage() {
                   Cancel the contract and refund the SOL to your wallet.
                 </p>
                 <button className="btn btn-danger" onClick={handleCancel} disabled={loading}>
-                  {loading ? <><span className="spinner" /> Processing…</> : "✕ Cancel & Refund"}
+                  {loading
+                    ? <><span className="spinner" /> Processing…</>
+                    : <><X size={15} strokeWidth={2.2} className="icon" aria-hidden /> Cancel &amp; Refund</>}
                 </button>
               </div>
             )}
@@ -381,7 +391,8 @@ export default function EscrowDetailPage() {
                       onClick={() => submitFileRef.current?.click()}
                       disabled={uploading}
                     >
-                      📎 Attach File
+                      <Paperclip size={13} strokeWidth={2.2} className="icon" aria-hidden />
+                      Attach File
                     </button>
                     {submitFile && (
                       <>
@@ -391,8 +402,9 @@ export default function EscrowDetailPage() {
                           className="btn btn-outline btn-sm"
                           style={{ padding: "4px 8px", fontSize: "0.75rem", flexShrink: 0 }}
                           onClick={() => { setSubmitFile(null); if (submitFileRef.current) submitFileRef.current.value = ""; }}
+                          aria-label="Remove file"
                         >
-                          ✕
+                          <X size={12} strokeWidth={2.2} aria-hidden />
                         </button>
                       </>
                     )}
@@ -421,7 +433,9 @@ export default function EscrowDetailPage() {
                 data-reveal="pop"
                 style={{ border: "3px dashed var(--leaf)", textAlign: "center", padding: "2.5rem", background: "var(--sage-lo)" }}
               >
-                <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>⚡</div>
+                <div className="icon-badge icon-badge--paid" style={{ margin: "0 auto 1rem" }}>
+                  <Zap size={22} strokeWidth={2.2} aria-hidden />
+                </div>
                 <h2 style={{ color: "var(--leaf)", fontWeight: 700, fontFamily: "var(--font-display)", fontSize: "1.6rem" }}>
                   Contract Complete
                 </h2>

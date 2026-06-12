@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
+import { Wallet, FileText, Zap, PenLine, X, Paperclip, RefreshCw, Download } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -108,15 +109,17 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
               rel="noopener noreferrer"
               style={{ marginTop: "0.6rem" }}
             >
-              ↓ {parsed.name || "Download Deliverable"}
+              <Download size={13} strokeWidth={2.2} className="icon" aria-hidden />
+              {parsed.name || "Download Deliverable"}
             </a>
           )}
         </div>
       )}
 
       {escrow.status === "completed" && (
-        <div style={{ marginTop: "0.75rem", color: "var(--leaf)", fontSize: "0.9rem", fontWeight: 700 }}>
-          ⚡ Payment released to your wallet
+        <div style={{ marginTop: "0.75rem", color: "var(--leaf)", fontSize: "0.9rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <Zap size={15} strokeWidth={2.2} className="icon" aria-hidden />
+          Payment released to your wallet
         </div>
       )}
 
@@ -128,7 +131,11 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
             className="btn btn-primary btn-sm"
             onClick={() => setShowForm((s) => !s)}
           >
-            {showForm ? "Cancel" : escrow.status === "revisionRequested" ? "✍ Resubmit Work" : "✍ Submit Work"}
+            {showForm
+              ? <><X size={13} strokeWidth={2.2} className="icon" aria-hidden /> Cancel</>
+              : escrow.status === "revisionRequested"
+              ? <><PenLine size={13} strokeWidth={2.2} className="icon" aria-hidden /> Resubmit Work</>
+              : <><PenLine size={13} strokeWidth={2.2} className="icon" aria-hidden /> Submit Work</>}
           </button>
         )}
 
@@ -169,7 +176,8 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
-              📎 Attach File
+              <Paperclip size={13} strokeWidth={2.2} className="icon" aria-hidden />
+              Attach File
             </button>
             {file && (
               <>
@@ -179,8 +187,9 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
                   className="btn btn-outline btn-sm"
                   style={{ padding: "4px 8px", fontSize: "0.75rem", flexShrink: 0 }}
                   onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  aria-label="Remove file"
                 >
-                  ✕
+                  <X size={12} strokeWidth={2.2} aria-hidden />
                 </button>
               </>
             )}
@@ -255,7 +264,9 @@ export default function FreelancerPage() {
 
         {!publicKey ? (
           <div className="empty-state">
-            <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>👛</div>
+            <div className="icon-badge icon-badge--lav" style={{ margin: "0 auto 0.75rem" }}>
+              <Wallet size={22} strokeWidth={2} aria-hidden />
+            </div>
             <p style={{ marginBottom: "1rem" }}>Connect your wallet to view your contracts.</p>
             <WalletMultiButton />
           </div>
@@ -267,12 +278,12 @@ export default function FreelancerPage() {
                 style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "var(--line)", borderRadius: "var(--r-md)", overflow: "hidden", border: "2.5px solid var(--line)", marginBottom: "1.5rem" }}
               >
                 {[
-                  { label: "Active",          count: activeCount,    color: "var(--sky)"    },
-                  { label: "Pending approval", count: submittedCount, color: "var(--butter)" },
-                  { label: "Completed",        count: completedCount, color: "var(--sage)"   },
+                  { label: "Active",           count: activeCount,    color: "var(--sky)"    },
+                  { label: "Pending approval",  count: submittedCount, color: "var(--butter)" },
+                  { label: "Completed",         count: completedCount, color: "var(--sage)"   },
                 ].map(({ label, count, color }) => (
                   <div key={label} style={{ background: "var(--paper)", padding: "1rem", textAlign: "center" }}>
-                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color, fontFamily: "var(--font-display)" }}>{count}</div>
+                    <div className="amount" style={{ fontSize: "1.5rem", color }}>{count}</div>
                     <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", marginTop: 2, fontWeight: 600 }}>{label}</div>
                   </div>
                 ))}
@@ -281,14 +292,18 @@ export default function FreelancerPage() {
 
             <div className="section-header">
               <h2 className="section-title">My Contracts</h2>
-              <button className="btn btn-outline btn-sm" onClick={loadEscrows} disabled={fetching}>
-                {fetching ? <><span className="spinner" /></> : "↻ Refresh"}
+              <button className="btn btn-outline btn-sm" onClick={loadEscrows} disabled={fetching} aria-label="Refresh">
+                {fetching
+                  ? <span className="spinner" />
+                  : <><RefreshCw size={13} strokeWidth={2.2} className="icon" aria-hidden /> Refresh</>}
               </button>
             </div>
 
             {escrows.length === 0 ? (
               <div className="empty-state">
-                <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>📋</div>
+                <div className="icon-badge" style={{ margin: "0 auto 0.75rem" }}>
+                  <FileText size={22} strokeWidth={2} aria-hidden />
+                </div>
                 {fetching ? "Loading contracts…" : "No contracts assigned to your wallet yet. Share your wallet address with a client to get started."}
               </div>
             ) : (

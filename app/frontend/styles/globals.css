@@ -148,7 +148,7 @@ h1 { font-size: var(--fs-h1); }
 h2 { font-size: var(--fs-h2); }
 h3 { font-size: var(--fs-h3); }
 
-.eyebrow { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; color: var(--brown); }
+.eyebrow { font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .08em; margin-bottom: .25rem; }
 .caption { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
 p { margin: 0 0 1em; }
 .lead { font-size: var(--fs-lg); }
@@ -306,9 +306,11 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 
 .card-amount {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
   color: var(--brown);
 }
 
@@ -670,15 +672,7 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   border-radius: var(--r-sm);
 }
 
-.sprinkle {
-  position: absolute;
-  font-family: var(--font-display);
-  color: #d9cdbb;
-  user-select: none;
-  pointer-events: none;
-  font-size: 1.4rem;
-  animation: float 6s var(--ease-in-out) infinite;
-}
+/* .sprinkle removed — decorative emoji floats replaced with domain content */
 
 /* ── 19. Focus & accessibility ──────────────────── */
 :focus-visible {
@@ -697,7 +691,66 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   html { scroll-behavior: auto; }
 }
 
-/* ── 20. Responsive ─────────────────────────────── */
+/* ── 20. Money / domain ─────────────────────────── */
+:root {
+  --status-paid:       var(--sage);
+  --status-pending:    var(--butter);
+  --status-overdue:    var(--err);
+  --status-processing: var(--sky);
+  --status-draft:      var(--line);
+}
+
+.amount {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  color: var(--ink);
+}
+.amount--lg   { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1; }
+.amount--muted{ color: var(--ink-soft); font-weight: 700; }
+
+/* semantic status pill (payment/escrow states) */
+.status {
+  display: inline-flex; align-items: center; gap: .4em;
+  font-family: var(--font-body); font-weight: 700; font-size: var(--fs-sm);
+  padding: .25em .8em; border-radius: var(--r-pill);
+  color: var(--ink); border: 2px solid var(--ink);
+  background: var(--status-pending);
+}
+.status .dot  { width: .5em; height: .5em; border-radius: 50%; background: currentColor; opacity: .6; flex-shrink: 0; }
+.status--paid        { background: var(--status-paid); }
+.status--overdue     { background: var(--status-overdue); }
+.status--processing  { background: var(--status-processing); }
+.status--draft       { background: var(--status-draft); }
+
+/* icon inline helper */
+.icon { display: inline-block; flex-shrink: 0; vertical-align: -0.15em; color: currentColor; }
+
+/* pastel disc for icon accents (empty states, step badges) */
+.icon-badge {
+  display: inline-grid; place-items: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--butter); border: 2.5px solid var(--ink); flex-shrink: 0;
+}
+.icon-badge--paid       { background: var(--status-paid); }
+.icon-badge--processing { background: var(--status-processing); }
+.icon-badge--alert      { background: var(--status-overdue); }
+.icon-badge--lav        { background: var(--lav); }
+.icon-badge--sky        { background: var(--sky); }
+.icon-badge--peach      { background: var(--peach); }
+.icon-badge--sage       { background: var(--sage); }
+
+/* client / freelancer avatar (initials) */
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.85rem;
+  color: var(--ink); border: 2.5px solid var(--ink);
+  background: var(--lav); flex-shrink: 0; user-select: none;
+}
+
+/* ── 21. Responsive ─────────────────────────────── */
 @media (max-width: 600px) {
   .navbar-links a:not(.devnet-badge) { display: none; }
   .page, .page-wide { padding: 1.25rem 1rem 3rem; }

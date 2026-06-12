@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
+import { Lock, Check, X, RotateCcw, RefreshCw, Download, Wallet } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -79,7 +80,8 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
               rel="noopener noreferrer"
               style={{ marginTop: "0.6rem" }}
             >
-              ↓ {parsed.name || "Download Deliverable"}
+              <Download size={13} strokeWidth={2.2} className="icon" aria-hidden />
+              {parsed.name || "Download Deliverable"}
             </a>
           )}
         </div>
@@ -97,7 +99,9 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
 
         {isSubmitted && (
           <button className="btn btn-success btn-sm" onClick={() => onApprove(escrow)} disabled={busy}>
-            {busy ? <><span className="spinner" /> Processing…</> : "✓ Approve & Pay"}
+            {busy
+              ? <><span className="spinner" /> Processing…</>
+              : <><Check size={14} strokeWidth={2.2} className="icon" aria-hidden /> Approve &amp; Pay</>}
           </button>
         )}
 
@@ -108,13 +112,17 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
             onClick={() => setShowRevision((s) => !s)}
             disabled={busy}
           >
-            {showRevision ? "Cancel" : "↩ Request Revision"}
+            {showRevision
+              ? <><X size={14} strokeWidth={2.2} className="icon" aria-hidden /> Cancel</>
+              : <><RotateCcw size={14} strokeWidth={2.2} className="icon" aria-hidden /> Request Revision</>}
           </button>
         )}
 
         {isActive && (
           <button className="btn btn-danger btn-sm" onClick={() => onCancel(escrow)} disabled={busy}>
-            {busy ? <><span className="spinner" /> Processing…</> : "✕ Cancel"}
+            {busy
+              ? <><span className="spinner" /> Processing…</>
+              : <><X size={14} strokeWidth={2.2} className="icon" aria-hidden /> Cancel</>}
           </button>
         )}
 
@@ -145,7 +153,9 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
             style={{ marginTop: "0.6rem", background: "var(--peach-lo)", color: "var(--orange)", border: "2.5px solid var(--orange)" }}
             disabled={busy || !revMsg.trim()}
           >
-            {busy ? <><span className="spinner" /> Sending…</> : "Send Revision Request"}
+            {busy
+              ? <><span className="spinner" /> Sending…</>
+              : "Send Revision Request"}
           </button>
         </form>
       )}
@@ -220,7 +230,7 @@ export default function ClientPage() {
     setLoading(true);
     const r = await requestRevision(escrow.pda, message);
     if (r.success) {
-      setToast({ type: "success", text: "Revision requested. Check your freelancer dashboard.", signature: r.signature });
+      setToast({ type: "success", text: "Revision requested.", signature: r.signature });
       await loadEscrows();
     } else {
       setToast({ type: "error", text: r.error });
@@ -243,7 +253,9 @@ export default function ClientPage() {
 
         {!publicKey ? (
           <div className="empty-state">
-            <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>👛</div>
+            <div className="icon-badge icon-badge--lav" style={{ margin: "0 auto 0.75rem" }}>
+              <Wallet size={22} strokeWidth={2} aria-hidden />
+            </div>
             <p style={{ marginBottom: "1rem" }}>Connect your wallet to create and manage escrows.</p>
             <WalletMultiButton />
           </div>
@@ -272,7 +284,9 @@ export default function ClientPage() {
                   <input className="form-input" type="number" step="0.001" min="0.001" value={form.amount} onChange={field("amount")} placeholder="e.g. 0.5" required />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: "100%" }}>
-                  {loading ? <><span className="spinner" /> Creating escrow…</> : "🔒 Create & Lock SOL"}
+                  {loading
+                    ? <><span className="spinner" /> Creating escrow…</>
+                    : <><Lock size={15} strokeWidth={2.2} className="icon" aria-hidden /> Create &amp; Lock SOL</>}
                 </button>
               </form>
             </div>
@@ -280,8 +294,10 @@ export default function ClientPage() {
             {/* ── Escrow list ── */}
             <div className="section-header">
               <h2 className="section-title">My Escrows</h2>
-              <button className="btn btn-outline btn-sm" onClick={loadEscrows} disabled={fetching}>
-                {fetching ? <><span className="spinner" /></> : "↻ Refresh"}
+              <button className="btn btn-outline btn-sm" onClick={loadEscrows} disabled={fetching} aria-label="Refresh">
+                {fetching
+                  ? <span className="spinner" />
+                  : <><RefreshCw size={13} strokeWidth={2.2} className="icon" aria-hidden /> Refresh</>}
               </button>
             </div>
 

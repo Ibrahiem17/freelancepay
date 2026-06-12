@@ -1,9 +1,10 @@
 import Link from "next/link";
 import Layout from "@/components/Layout";
+import { Users, Lock, PenLine, CheckCircle, RotateCcw, Lightbulb, Brain, Send } from "lucide-react";
 
 const STEPS = [
   {
-    emoji: "🤝",
+    Icon: Users,
     who: "Client",
     color: "var(--lav)",
     bgLo: "var(--lav-lo)",
@@ -12,7 +13,7 @@ const STEPS = [
     normal: "The client creates an escrow contract on FreelancePay, enters the freelancer's wallet address and the agreed amount.",
   },
   {
-    emoji: "🔒",
+    Icon: Lock,
     who: "Money gets locked",
     color: "var(--sky)",
     bgLo: "var(--sky-lo)",
@@ -21,7 +22,7 @@ const STEPS = [
     normal: "The SOL is transferred into a Program Derived Account (PDA) — a smart contract vault that only releases funds when both parties complete their role.",
   },
   {
-    emoji: "✍️",
+    Icon: PenLine,
     who: "Freelancer",
     color: "var(--leaf)",
     bgLo: "var(--sage-lo)",
@@ -30,7 +31,7 @@ const STEPS = [
     normal: "The freelancer calls the submit_work instruction, recording their delivery note permanently on-chain. The escrow status changes from Active → Submitted.",
   },
   {
-    emoji: "✅",
+    Icon: CheckCircle,
     who: "Client",
     color: "var(--leaf)",
     bgLo: "var(--sage-lo)",
@@ -39,7 +40,7 @@ const STEPS = [
     normal: "The client calls approve_work. The smart contract closes the escrow account and transfers the full SOL balance to the freelancer's wallet in the same transaction.",
   },
   {
-    emoji: "↩️",
+    Icon: RotateCcw,
     who: "Client",
     color: "var(--orange)",
     bgLo: "var(--peach-lo)",
@@ -73,13 +74,13 @@ const QUESTIONS = [
 ];
 
 const FLOW = [
-  { label: "Client creates\nescrow", color: "var(--lav)", bgLo: "var(--lav-lo)", emoji: "🔒" },
-  { label: "→", color: "var(--ink-soft)", bgLo: null, emoji: null },
-  { label: "Freelancer\nsubmits work", color: "var(--sky)", bgLo: "var(--sky-lo)", emoji: "✍️" },
-  { label: "→", color: "var(--ink-soft)", bgLo: null, emoji: null },
-  { label: "Client\napproves", color: "var(--leaf)", bgLo: "var(--sage-lo)", emoji: "✅" },
-  { label: "→", color: "var(--ink-soft)", bgLo: null, emoji: null },
-  { label: "SOL sent\ninstantly", color: "var(--leaf)", bgLo: "var(--sage-lo)", emoji: "⚡" },
+  { label: "Client creates\nescrow",    Icon: Lock,         color: "var(--lav)",    bgLo: "var(--lav-lo)"  },
+  { label: null,                         Icon: null,          color: "var(--ink-soft)", bgLo: null            },
+  { label: "Freelancer\nsubmits work",  Icon: PenLine,      color: "var(--sky)",    bgLo: "var(--sky-lo)"  },
+  { label: null,                         Icon: null,          color: "var(--ink-soft)", bgLo: null            },
+  { label: "Client\napproves",          Icon: CheckCircle,  color: "var(--leaf)",   bgLo: "var(--sage-lo)" },
+  { label: null,                         Icon: null,          color: "var(--ink-soft)", bgLo: null            },
+  { label: "SOL sent\ninstantly",       Icon: Send,         color: "var(--leaf)",   bgLo: "var(--sage-lo)" },
 ];
 
 export default function HowItWorks() {
@@ -88,7 +89,11 @@ export default function HowItWorks() {
       {/* Hero */}
       <section style={{ textAlign: "center", padding: "4rem 1.5rem 2.5rem", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 40% at 50% 0%, var(--lav-lo) 0%, transparent 70%)", pointerEvents: "none" }} />
-        <div data-enter style={{ fontSize: "3rem", marginBottom: "1rem" }}>🧠</div>
+        <div data-enter style={{ marginBottom: "1rem", display: "flex", justifyContent: "center" }}>
+          <div className="icon-badge icon-badge--lav" style={{ width: 56, height: 56 }}>
+            <Brain size={28} strokeWidth={2} aria-hidden />
+          </div>
+        </div>
         <h1 data-enter style={{ fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontWeight: 800, marginBottom: "1rem", lineHeight: 1.2, fontFamily: "var(--font-display)" }}>
           How FreelancePay Works
         </h1>
@@ -101,7 +106,11 @@ export default function HowItWorks() {
       {/* The core idea */}
       <section style={{ maxWidth: 740, margin: "0 auto", padding: "0 1.5rem 3rem" }}>
         <div className="card" data-reveal="pop" style={{ textAlign: "center", padding: "2rem", background: "var(--lav-lo)", border: "3px dashed var(--lav)" }}>
-          <div style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>💡</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "0.75rem" }}>
+            <div className="icon-badge icon-badge--lav">
+              <Lightbulb size={22} strokeWidth={2.2} aria-hidden />
+            </div>
+          </div>
           <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.75rem", fontFamily: "var(--font-display)" }}>
             The Big Idea in One Sentence
           </h2>
@@ -123,56 +132,53 @@ export default function HowItWorks() {
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {STEPS.map((step, i) => (
-            <div key={i} data-reveal="rise" style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start" }}>
-              {/* Step dot + connector */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: "50%",
-                  background: step.bgLo,
-                  border: `3px solid ${step.color}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "1.3rem",
-                }}>
-                  {step.emoji}
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div style={{ width: 2, flex: 1, minHeight: 32, background: "var(--line)", margin: "6px 0" }} />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="card" style={{ flex: 1, marginBottom: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                  <span style={{
-                    fontSize: "0.7rem", fontWeight: 800, padding: "2px 10px", borderRadius: 999,
-                    background: step.bgLo, color: step.color, border: `2px solid ${step.color}`,
-                    fontFamily: "var(--font-body)",
-                  }}>
-                    {step.who}
-                  </span>
-                  <span style={{ fontSize: "0.65rem", color: "var(--ink-soft)", fontWeight: 600 }}>Step {i + 1}</span>
-                </div>
-                <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.6rem", fontFamily: "var(--font-display)" }}>
-                  {step.title}
-                </h3>
-
-                <div style={{ background: "var(--sage-lo)", border: "2.5px dashed var(--sage)", borderRadius: "var(--r-sm)", padding: "0.7rem 0.9rem", marginBottom: "0.6rem" }}>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--leaf)", marginBottom: "0.3rem", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
-                    SIMPLE VERSION
+          {STEPS.map((step, i) => {
+            const { Icon } = step;
+            return (
+              <div key={i} data-reveal="rise" style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start" }}>
+                {/* Step dot + connector */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                  <div className="icon-badge" style={{ background: step.bgLo, border: `3px solid ${step.color}` }}>
+                    <Icon size={20} strokeWidth={2.2} style={{ color: step.color }} aria-hidden />
                   </div>
-                  <p style={{ fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.65, fontWeight: 600, margin: 0 }}>{step.simple}</p>
+                  {i < STEPS.length - 1 && (
+                    <div style={{ width: 2, flex: 1, minHeight: 32, background: "var(--line)", margin: "6px 0" }} />
+                  )}
                 </div>
 
-                <div style={{ background: "var(--lav-lo)", border: "2.5px dashed var(--lav)", borderRadius: "var(--r-sm)", padding: "0.7rem 0.9rem" }}>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--lav)", marginBottom: "0.3rem", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
-                    TECHNICAL VERSION
+                {/* Content */}
+                <div className="card" style={{ flex: 1, marginBottom: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                    <span style={{
+                      fontSize: "0.7rem", fontWeight: 800, padding: "2px 10px", borderRadius: 999,
+                      background: step.bgLo, color: step.color, border: `2px solid ${step.color}`,
+                      fontFamily: "var(--font-body)",
+                    }}>
+                      {step.who}
+                    </span>
+                    <span style={{ fontSize: "0.65rem", color: "var(--ink-soft)", fontWeight: 600 }}>Step {i + 1}</span>
                   </div>
-                  <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", lineHeight: 1.65, fontWeight: 600, margin: 0 }}>{step.normal}</p>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.6rem", fontFamily: "var(--font-display)" }}>
+                    {step.title}
+                  </h3>
+
+                  <div style={{ background: "var(--sage-lo)", border: "2.5px dashed var(--sage)", borderRadius: "var(--r-sm)", padding: "0.7rem 0.9rem", marginBottom: "0.6rem" }}>
+                    <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--leaf)", marginBottom: "0.3rem", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
+                      SIMPLE VERSION
+                    </div>
+                    <p style={{ fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.65, fontWeight: 600, margin: 0 }}>{step.simple}</p>
+                  </div>
+
+                  <div style={{ background: "var(--lav-lo)", border: "2.5px dashed var(--lav)", borderRadius: "var(--r-sm)", padding: "0.7rem 0.9rem" }}>
+                    <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--lav)", marginBottom: "0.3rem", letterSpacing: "0.06em", fontFamily: "var(--font-body)" }}>
+                      TECHNICAL VERSION
+                    </div>
+                    <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", lineHeight: 1.65, fontWeight: 600, margin: 0 }}>{step.normal}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -183,21 +189,23 @@ export default function HowItWorks() {
         </h2>
         <div data-reveal="zoom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0, flexWrap: "wrap", rowGap: "0.5rem" }}>
           {FLOW.map((item, i) =>
-            item.emoji ? (
+            item.Icon ? (
               <div key={i} style={{
                 textAlign: "center", padding: "0.75rem 1rem",
                 background: item.bgLo,
                 border: `2.5px dashed ${item.color}`,
                 borderRadius: "var(--r-sm)", minWidth: 90,
               }}>
-                <div style={{ fontSize: "1.4rem", marginBottom: "0.3rem" }}>{item.emoji}</div>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "0.4rem" }}>
+                  <item.Icon size={22} strokeWidth={2.1} style={{ color: item.color }} aria-hidden />
+                </div>
                 <div style={{ fontSize: "0.72rem", color: item.color, fontWeight: 700, whiteSpace: "pre-line", lineHeight: 1.4, fontFamily: "var(--font-body)" }}>
                   {item.label}
                 </div>
               </div>
             ) : (
-              <div key={i} style={{ fontSize: "1.2rem", color: "var(--ink-soft)", padding: "0 0.25rem", fontWeight: 700 }}>
-                {item.label}
+              <div key={i} style={{ fontSize: "1rem", color: "var(--ink-soft)", padding: "0 0.25rem", fontWeight: 700 }}>
+                →
               </div>
             )
           )}
@@ -226,7 +234,11 @@ export default function HowItWorks() {
       {/* CTA */}
       <section style={{ maxWidth: 740, margin: "0 auto 4rem", padding: "0 1.5rem" }}>
         <div className="card" data-reveal="pop" style={{ textAlign: "center", padding: "2rem", background: "var(--lav-lo)", border: "3px dashed var(--lav)" }}>
-          <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🚀</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "0.5rem" }}>
+            <div className="icon-badge icon-badge--sky">
+              <Send size={20} strokeWidth={2.2} aria-hidden />
+            </div>
+          </div>
           <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.5rem", fontFamily: "var(--font-display)" }}>
             Ready to try it?
           </h2>

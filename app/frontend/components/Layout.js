@@ -1,4 +1,5 @@
 import Head from "next/head";
+import { AlertTriangle } from "lucide-react";
 import Navbar from "./Navbar";
 
 export default function Layout({ children, title = "FreelancePay" }) {
@@ -27,16 +28,14 @@ export default function Layout({ children, title = "FreelancePay" }) {
         {children}
       </main>
 
-      <footer className="footer" style={{ position: "relative", overflow: "hidden" }}>
-        {/* decorative sprinkles */}
-        <span className="sprinkle" style={{ left: "8%",  top: "30%", fontSize: "1.1rem", animationDelay: "0s",    animationDuration: "7s"  }}>✿</span>
-        <span className="sprinkle" style={{ left: "92%", top: "20%", fontSize: "1rem",   animationDelay: "1.4s",  animationDuration: "9s"  }}>⟡</span>
-        <span className="sprinkle" style={{ left: "50%", top: "60%", fontSize: "0.9rem", animationDelay: "0.7s",  animationDuration: "8s"  }}>♡</span>
-
+      <footer className="footer">
         <div><strong>FreelancePay</strong> &nbsp;·&nbsp; Built by UMT Lahore for Colosseum Frontier Hackathon</div>
         <div style={{ marginTop: 4 }}>
           Powered by <span>Solana</span> &nbsp;·&nbsp;
-          <span style={{ color: "var(--warn)", fontWeight: 700 }}>⚠ Devnet — not real money</span>
+          <span style={{ color: "var(--warn)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "0.3rem", verticalAlign: "middle" }}>
+            <AlertTriangle size={13} strokeWidth={2.2} aria-hidden />
+            Devnet — not real money
+          </span>
         </div>
       </footer>
     </>
