@@ -750,68 +750,7 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   background: var(--lav); flex-shrink: 0; user-select: none;
 }
 
-/* ── 21. Thematic identity — escrow vault / receipt stub ── */
-
-/* rubber-stamp lifecycle mark — displayed alongside the .badge pill */
-.stamp {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  padding: .15em .65em;
-  border: 2px solid currentColor;
-  border-radius: 4px;
-  transform: rotate(-2deg);
-  opacity: .82;
-  pointer-events: none;
-  user-select: none;
-  line-height: 1.5;
-  flex-shrink: 0;
-}
-.stamp--locked   { color: var(--purple);  background: var(--lav-lo);    }
-.stamp--escrow   { color: var(--brown);   background: var(--butter-lo); }
-.stamp--revision { color: var(--orange);  background: var(--peach-lo);  }
-.stamp--released { color: var(--green);   background: var(--sage-lo);   }
-.stamp--refunded { color: var(--red);     background: var(--pink-lo);   }
-
-/* inline cue next to SOL amount — lock / released state */
-.locked-cue {
-  display: inline-flex;
-  align-items: center;
-  gap: .3em;
-  font-size: .72rem;
-  font-weight: 700;
-  color: var(--ink-soft);
-  line-height: 1;
-}
-.locked-cue--released { color: var(--leaf); }
-
-/* DEVNET pill — friendly "practice money" stamp style */
-.devnet-stamp {
-  transform: rotate(-1.5deg);
-  display: inline-block;
-  border-style: dashed !important;
-  background: var(--butter) !important;
-  font-family: var(--font-display) !important;
-  letter-spacing: .04em;
-}
-
-/* vault hero sizing */
-.vault-hero-svg { display: block; margin: 0 auto; }
-
-/* hex-texture overlay — hero + footer accent */
-.hex-texture {
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='52'%3E%3Cpolygon points='30%2C4 49%2C15 49%2C37 30%2C48 11%2C37 11%2C15' fill='none' stroke='rgba(214%2C200%2C236%2C0.32)' stroke-width='1.4'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='52'%3E%3Cpolygon points='30%2C4 49%2C15 49%2C37 30%2C48 11%2C37 11%2C15' fill='none' stroke='rgba(214%2C200%2C236%2C0.32)' stroke-width='1.4'/%3E%3C/svg%3E");
-  background-size: 60px 52px;
-  background-position: 0 0, 30px 26px;
-}
-
-/* ── 22. Responsive ─────────────────────────────── */
+/* ── 21. Responsive ─────────────────────────────── */
 @media (max-width: 600px) {
   .navbar-links a:not(.devnet-badge) { display: none; }
   .page, .page-wide { padding: 1.25rem 1rem 3rem; }

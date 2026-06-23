@@ -8,17 +8,47 @@
   },
   "instructions": [
     {
+      "name": "initializeClientProfile",
+      "discriminator": [160, 82, 26, 46, 118, 45, 39, 142],
+      "accounts": [
+        { "name": "client", "writable": true, "signer": true },
+        {
+          "name": "clientProfile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [99, 108, 105, 101, 110, 116, 95, 112, 114, 111, 102, 105, 108, 101] },
+              { "kind": "account", "path": "client" }
+            ]
+          }
+        },
+        { "name": "systemProgram", "address": "11111111111111111111111111111111" }
+      ],
+      "args": []
+    },
+    {
       "name": "createEscrow",
       "discriminator": [253, 215, 165, 116, 36, 108, 68, 80],
       "accounts": [
         { "name": "client", "writable": true, "signer": true },
+        {
+          "name": "clientProfile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [99, 108, 105, 101, 110, 116, 95, 112, 114, 111, 102, 105, 108, 101] },
+              { "kind": "account", "path": "client" }
+            ]
+          }
+        },
         {
           "name": "escrow",
           "writable": true,
           "pda": {
             "seeds": [
               { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
-              { "kind": "account", "path": "client" }
+              { "kind": "account", "path": "client" },
+              { "kind": "arg", "path": "escrowIndex" }
             ]
           }
         },
@@ -28,7 +58,8 @@
         { "name": "title", "type": "string" },
         { "name": "description", "type": "string" },
         { "name": "freelancer", "type": "pubkey" },
-        { "name": "amount", "type": "u64" }
+        { "name": "amount", "type": "u64" },
+        { "name": "escrowIndex", "type": "u64" }
       ]
     },
     {
@@ -36,16 +67,7 @@
       "discriminator": [158, 80, 101, 51, 114, 130, 101, 253],
       "accounts": [
         { "name": "freelancer", "writable": true, "signer": true },
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
-              { "kind": "account", "path": "escrow.client", "account": "EscrowAccount" }
-            ]
-          }
-        }
+        { "name": "escrow", "writable": true }
       ],
       "args": [
         { "name": "workDescription", "type": "string" }
@@ -57,16 +79,7 @@
       "accounts": [
         { "name": "client", "writable": true, "signer": true },
         { "name": "freelancer", "writable": true },
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
-              { "kind": "account", "path": "client" }
-            ]
-          }
-        }
+        { "name": "escrow", "writable": true }
       ],
       "args": []
     },
@@ -75,16 +88,7 @@
       "discriminator": [156, 203, 54, 179, 38, 72, 33, 21],
       "accounts": [
         { "name": "client", "writable": true, "signer": true },
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
-              { "kind": "account", "path": "client" }
-            ]
-          }
-        }
+        { "name": "escrow", "writable": true }
       ],
       "args": []
     },
@@ -93,16 +97,7 @@
       "discriminator": [205, 195, 75, 171, 242, 149, 90, 14],
       "accounts": [
         { "name": "client", "writable": true, "signer": true },
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
-              { "kind": "account", "path": "client" }
-            ]
-          }
-        }
+        { "name": "escrow", "writable": true }
       ],
       "args": [
         { "name": "message", "type": "string" }
@@ -111,11 +106,26 @@
   ],
   "accounts": [
     {
+      "name": "ClientProfile",
+      "discriminator": [24, 67, 86, 10, 117, 219, 200, 237]
+    },
+    {
       "name": "EscrowAccount",
       "discriminator": [36, 69, 48, 18, 128, 225, 125, 135]
     }
   ],
   "types": [
+    {
+      "name": "ClientProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "pubkey" },
+          { "name": "escrowCount", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
     {
       "name": "EscrowAccount",
       "type": {
@@ -130,6 +140,7 @@
           { "name": "status", "type": { "defined": { "name": "EscrowStatus" } } },
           { "name": "createdAt", "type": "i64" },
           { "name": "bump", "type": "u8" },
+          { "name": "escrowIndex", "type": "u64" },
           { "name": "revisionNote", "type": "string" }
         ]
       }

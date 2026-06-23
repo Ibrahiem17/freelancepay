@@ -23,6 +23,7 @@
 15. [How the Pages Connect to Each Other](#15-how-the-pages-connect-to-each-other)
 16. [What Happens When Something Goes Wrong](#16-what-happens-when-something-goes-wrong)
 17. [Current Limitations](#17-current-limitations)
+18. [Developer Scripts — Setup, Airdrop, Tests](#18-developer-scripts--setup-airdrop-tests)
 
 ---
 
@@ -85,7 +86,8 @@ A smart contract is a program that lives on a blockchain. Once deployed, it runs
 │  LAYER 2 — Next.js Frontend                                 │
 │  ├── pages/  (index, client, freelancer, escrow/[id], etc.) │
 │  ├── components/ (Layout, Navbar, Toast)                    │
-│  └── src/hooks/useEscrow.js  (blockchain bridge)            │
+│  └── src/hooks/u
+seEscrow.js  (blockchain bridge)            │
 │                                                             │
 │  LAYER 3 — Design System                                    │
 │  ├── styles/globals.css  (CSS token system, all styles)     │
@@ -155,25 +157,58 @@ Every escrow account stores:
 | `status` | `Active` | Current lifecycle stage |
 | `created_at` | `1748822400` | Unix timestamp |
 | `bump` | `254` | Technical seed used to derive this account's address |
+| `escrow_index` | `0` | Which escrow number this is for the client (0 = first, 1 = second, ...) |
 | `revision_note` | `"Please change the font"` | Client's latest feedback |
 
-**About PDAs (Program Derived Addresses):** Escrow accounts don't have random addresses — they have a *deterministic address* computed from two seeds: the string `"escrow"` and the client's wallet address. This means anyone can compute where a client's escrow lives without asking anyone. The `bump` is the small number (0–255) that makes the cryptographic math produce a valid address that doesn't conflict with existing keys.
+**Field order matters for `client` and `freelancer`.** The memcmp queries that fetch escrows filter by raw byte offset: `client` is at byte 8 (after the 8-byte Anchor discriminator), `freelancer` is at byte 40 (8 + 32). These offsets must stay fixed — inserting any field before `freelancer` would break all dashboard queries silently.
 
-### The Five Instructions
+**About PDAs (Program Derived Addresses):** Escrow accounts have a *deterministic address* computed from three seeds: the string `"escrow"`, the client's wallet address, and the escrow index as 8 little-endian bytes. This three-part seed is what allows a single client wallet to have multiple simultaneous escrows — each index produces a different PDA.
 
-These are the only five operations the program allows. Anything else is impossible.
+```
+PDA = findProgramAddress(["escrow", clientPubkey, escrowIndex.to_le_bytes()], PROGRAM_ID)
+```
+
+The `bump` is the small number (0–255) that makes the cryptographic math produce a valid address that doesn't conflict with existing keys. It is stored in the account and reused in later instructions so the program never has to re-derive it.
+
+### The ClientProfile Account
+
+Every client also has a **ClientProfile** account — a small companion account that tracks how many escrows they have created. Its seeds are `["client_profile", client_pubkey]`.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `owner` | `Pubkey` | The client wallet that owns this profile |
+| `escrow_count` | `u64` | Number of escrows created so far; used as the next escrow's index |
+| `bump` | `u8` | PDA bump for this account |
+
+A client creates their profile once (via `initialize_client_profile`) before their first escrow. After that, each `create_escrow` call reads `escrow_count` as the next index, creates the escrow at `PDA["escrow", client, count]`, then increments `escrow_count` by 1. This makes it impossible to create two escrows at the same PDA — each one gets a unique, sequential address.
+
+### The Six Instructions
+
+These are the only six operations the program allows. Anything else is impossible.
+
+#### Instruction 0: `initialize_client_profile`
+
+**Who calls it:** The client — once per wallet, before their first escrow.
+
+**What it does:**
+1. Creates a new `ClientProfile` account at PDA `["client_profile", client_pubkey]`.
+2. Sets `owner` to the client's wallet, `escrow_count` to 0.
+3. Stores the bump so later instructions can re-derive the PDA cheaply.
+
+If called again on the same wallet, the transaction fails because the PDA account already exists.
 
 #### Instruction 1: `create_escrow`
 
 **Who calls it:** The client.
 
 **What it does:**
-1. Checks amount > 0.
-2. Creates a new escrow account at the deterministic PDA address.
-3. Writes all escrow data into the account.
+1. Checks `amount > 0` and verifies the supplied `escrow_index` matches `client_profile.escrow_count` (prevents index forgery).
+2. Creates a new escrow account at `PDA["escrow", client, escrow_index.to_le_bytes()]`.
+3. Writes all escrow data into the account, including storing `escrow_index` on the account.
 4. Transfers the specified SOL from the client's wallet into the escrow account.
+5. Increments `client_profile.escrow_count` by 1 so the next escrow gets the next index.
 
-After this runs, the SOL is inside the escrow account. The client no longer has it. The freelancer doesn't have it yet. It's locked — and only the program decides where it goes next.
+After this runs, the SOL is inside the escrow account. The client no longer has it. The freelancer doesn't have it yet. It's locked — and only the program decides where it goes next. Multiple escrows from the same wallet all live at different PDAs because they have different `escrow_index` values.
 
 #### Instruction 2: `submit_work`
 
@@ -281,19 +316,34 @@ app/frontend/
 │   ├── Layout.js        ← page shell (head, navbar, footer, SVG filter)
 │   ├── Navbar.js        ← top navigation bar
 │   └── Toast.js         ← slide-in notification popup
+├── scripts/             ← developer tools (Phase 1 & 2)
+│   ├── verify-setup.js  ← 8-check environment verifier (run before dev)
+│   ├── airdrop-devnet.js ← CLI tool to request Devnet test SOL
+│   └── test-program.js  ← end-to-end integration tests against Devnet
 ├── src/hooks/
 │   └── useEscrow.js     ← ALL blockchain calls live here
 ├── src/idl/
 │   └── freelancepay.json ← Anchor IDL (describes the program's interface)
 ├── utils/
-│   ├── anchor.js        ← Anchor connection helpers
+│   ├── anchor.js        ← Anchor connection helpers (currently unused)
 │   ├── ipfs.js          ← uploadToIPFS() and parseSubmission()
 │   └── theme.js         ← motion system: scroll reveal, ripple, tilt, etc.
 ├── styles/
 │   └── globals.css      ← the entire design system as CSS custom properties
+├── .env.local.example   ← template for all 10 required env vars with comments
 └── public/
     └── logo.svg         ← FreelancePay logo
 ```
+
+**On-chain program source layout** (`programs/freelancepay/src/`) — four files only:
+```
+src/
+├── lib.rs        ← all 6 instruction handlers + account context structs
+├── state.rs      ← EscrowAccount, ClientProfile, EscrowStatus
+├── error.rs      ← ErrorCode enum (NotClient, NotFreelancer, InvalidStatus, AlreadySubmitted)
+└── constants.rs  ← ESCROW_SEED, CLIENT_PROFILE_SEED
+```
+Dead files that existed before Phase 2 cleanup (`create_escrow.rs`, `submit_work.rs`, `approve_work.rs`, `cancel_escrow.rs`, `instructions.rs`, and the entire `instructions/` directory) were deleted. All instruction logic lives exclusively in `lib.rs`.
 
 ### `pages/_app.js` — The Root Setup
 
@@ -856,12 +906,24 @@ const getProgram = useCallback(() => {
 
 `AnchorProvider` wraps the Solana connection and the wallet together. `new Program(idl, provider)` reads the IDL JSON file and builds a typed API client. With `commitment: "confirmed"`, the app waits until the transaction has been voted on by a supermajority of validators before treating it as done.
 
-### How `deriveEscrowPDA()` Works
+### How `deriveEscrowPDA()` and `deriveClientProfilePDA()` Work
 
 ```js
-const deriveEscrowPDA = useCallback((clientPubkey) => {
+// Escrow PDA — three seeds: "escrow" + clientPubkey + escrowIndex (8-byte LE)
+const deriveEscrowPDA = useCallback((clientPubkey, escrowIndex) => {
+  const indexBuf = Buffer.alloc(8);
+  indexBuf.writeBigUInt64LE(BigInt(escrowIndex));
   const [pda] = PublicKey.findProgramAddressSync(
-    [new TextEncoder().encode("escrow"), clientPubkey.toBytes()],
+    [Buffer.from("escrow"), clientPubkey.toBytes(), indexBuf],
+    PROGRAM_ID
+  );
+  return pda;
+}, []);
+
+// ClientProfile PDA — two seeds: "client_profile" + clientPubkey
+const deriveClientProfilePDA = useCallback((clientPubkey) => {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("client_profile"), clientPubkey.toBytes()],
     PROGRAM_ID
   );
   return pda;
@@ -870,27 +932,42 @@ const deriveEscrowPDA = useCallback((clientPubkey) => {
 
 `findProgramAddressSync` is a deterministic function: given the same seeds and program ID, it always returns the same address. It tries `bump` values from 255 down to 0 until it finds an address that's provably NOT on the ed25519 elliptic curve (which is required for PDAs to be "owned" by programs, not users).
 
+The `escrowIndex` parameter is written as 8 bytes in little-endian format — this mirrors exactly how the Rust program does `escrow_index.to_le_bytes()`. The JS and Rust derivations must be byte-for-byte identical or the frontend will compute the wrong PDA.
+
 ### How Each Blockchain Call Works
 
-All five functions follow the same pattern:
+All functions follow the same pattern. `createEscrow` now auto-initializes the `ClientProfile` if this is the client's first escrow:
 
 ```js
 const createEscrow = useCallback(async (title, description, freelancerAddress, amountInSOL) => {
   try {
     const program = getProgram();
-    const escrowPDA = deriveEscrowPDA(wallet.publicKey);
+    const profilePDA = deriveClientProfilePDA(wallet.publicKey);
     const amountLamports = new BN(Math.round(amountInSOL * LAMPORTS_PER_SOL));
 
+    // Read current escrow count from profile (or initialize profile if missing)
+    let profile = null;
+    try { profile = await program.account.clientProfile.fetch(profilePDA); }
+    catch { await initializeClientProfile(); profile = { escrowCount: new BN(0) }; }
+
+    const escrowIndex = profile.escrowCount;
+    const escrowPDA = deriveEscrowPDA(wallet.publicKey, escrowIndex.toNumber());
+
     const signature = await program.methods
-      .createEscrow(title, description, new PublicKey(freelancerAddress), amountLamports)
-      .accounts({ client: wallet.publicKey, escrow: escrowPDA, systemProgram: SystemProgram.programId })
+      .createEscrow(title, description, new PublicKey(freelancerAddress), amountLamports, escrowIndex)
+      .accounts({
+        client: wallet.publicKey,
+        clientProfile: profilePDA,
+        escrow: escrowPDA,
+        systemProgram: SystemProgram.programId
+      })
       .rpc();
 
     return { success: true, signature, escrowPDA: escrowPDA.toBase58() };
   } catch (err) {
     return { success: false, error: err.message };
   }
-}, [getProgram, deriveEscrowPDA, wallet.publicKey]);
+}, [getProgram, deriveEscrowPDA, deriveClientProfilePDA, wallet.publicKey]);
 ```
 
 1. `new BN(...)` — `BN` is a big-number library. JavaScript can't represent 64-bit integers accurately with regular `number` (max safe integer is 2^53 ≈ 9 quadrillion, while 1 SOL = 1 billion lamports so most amounts fit, but the program uses `u64` which can hold up to 18 quintillion).
@@ -1122,7 +1199,8 @@ The security doesn't rely on the website being honest. Even if someone built a f
 
 | Data | Location | Who can read it | Who can change it |
 |---|---|---|---|
-| All escrow fields | Solana blockchain | Anyone | Only the program, via valid instructions |
+| All escrow fields | Solana blockchain (`EscrowAccount` PDA) | Anyone | Only the program, via valid instructions |
+| Client escrow counter + profile | Solana blockchain (`ClientProfile` PDA) | Anyone | Only via `initialize_client_profile` / `create_escrow` |
 | Uploaded deliverable files | Pinata/IPFS | Anyone with the URL | Nobody (content-addressed, immutable) |
 | IPFS file URL | Inside `work_submission` on Solana | Anyone | Only via `submit_work` instruction |
 | `PINATA_JWT` | `.env.local` (server-side env var) | Only the server process | The developer |
@@ -1201,7 +1279,7 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 ## 17. Current Limitations
 
-**One escrow per client at a time.** The escrow PDA is derived from the client's wallet address alone. A second `create_escrow` from the same wallet would try to create an account at the same address that already exists — the program would fail. Fix: add a unique counter or timestamp to the PDA seeds.
+**Multiple escrows per client are now supported.** Each client has a `ClientProfile` account tracking an `escrow_count` counter. Each new escrow uses the counter as its PDA seed index (`["escrow", client, escrow_count.to_le_bytes()]`), so every escrow gets a unique deterministic address. The counter increments after each creation. A single wallet can have many simultaneous open escrows.
 
 **No dispute resolution.** If the client refuses to approve forever and won't request revisions, the SOL stays locked indefinitely. There is no timeout, no auto-release, and no arbitration mechanism.
 
@@ -1217,11 +1295,104 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 ---
 
+## 18. Developer Scripts — Setup, Airdrop, Tests
+
+Three scripts live in `app/frontend/scripts/`. Run them from the `app/frontend/` directory.
+
+---
+
+### `scripts/verify-setup.js` — Environment Verifier
+
+```sh
+node scripts/verify-setup.js
+```
+
+Runs 8 checks before you start development. Outputs a table of PASS/FAIL with detail columns:
+
+| # | Check | What it verifies |
+|---|---|---|
+| 1 | Node.js version ≥ 18 | `process.versions.node` major ≥ 18 |
+| 2 | Required npm packages installed | `@coral-xyz/anchor`, `@solana/web3.js`, `@solana/wallet-adapter-react`, `next`, `react` exist in `node_modules/` |
+| 3 | Solana Devnet reachable | Opens a `Connection` and fetches the current slot number |
+| 4 | `PINATA_JWT` set | Reads `.env.local`; confirms the variable exists and is non-empty (value hidden) |
+| 5 | Program account exists on Devnet | `getAccountInfo(PROGRAM_ID)` returns non-null |
+| 6 | IDL file exists | `src/idl/freelancepay.json` is present |
+| 7 | IDL address matches Program ID | `idl.address === PROGRAM_ID` |
+| 8 | `globals.css` exists | `styles/globals.css` is present |
+
+If any check fails the script exits with code 1 and prints the specific reason. All 8 currently pass on a correctly configured machine.
+
+---
+
+### `scripts/airdrop-devnet.js` — Devnet SOL Faucet
+
+```sh
+node scripts/airdrop-devnet.js <WALLET_ADDRESS>
+```
+
+Requests 2 SOL from the public Devnet faucet to the given wallet. Prints the before balance, sends the airdrop request with exponential-backoff retry (4 attempts: 500ms → 1s → 2s → 4s), then prints the after balance.
+
+**Important:** The public faucet at `api.devnet.solana.com` is rate-limited to 2 SOL per wallet per day. If you hit `429 Too Many Requests`, use [faucet.solana.com](https://faucet.solana.com) in a browser or fund test wallets with `solana transfer` from an already-funded wallet:
+
+```sh
+solana transfer <WALLET_ADDRESS> <AMOUNT> --url devnet --allow-unfunded-recipient
+```
+
+---
+
+### `scripts/test-program.js` — End-to-End Integration Tests
+
+```sh
+node scripts/test-program.js
+```
+
+Runs 13 tests against the live Devnet program. Test wallets are auto-generated in `scripts/keypairs/` on first run and reused on subsequent runs. The script funds wallets automatically if their balance drops below 0.3 SOL (client) or 0.1 SOL (freelancer).
+
+#### What it tests
+
+**Happy Path** — full escrow lifecycle:
+1. Initialize `ClientProfile` (or detect existing one)
+2. `create_escrow` — checks status=Active, correct amount, correct `escrow_index`
+3. `submit_work` — checks status=Submitted, `work_submission` written
+4. `request_revision` — checks status=RevisionRequested, `revision_note` written
+5. `submit_work` (resubmit) — checks status=Submitted, `work_submission` updated
+6. `approve_work` — checks escrow account closed, freelancer balance increased ≥ amount
+7. Profile counter check — verifies `escrow_count` incremented (N → N+1)
+
+**Cancel Path**:
+8. `create_escrow` for a new escrow
+9. `cancel_escrow` — checks account closed, client recovered ≥ 0.04 SOL
+
+**Multi-Escrow Coexistence**:
+10–13. Creates two escrows at indices N and N+1 from the same client wallet, then fetches both accounts and verifies they exist at distinct PDAs with correct titles.
+
+#### Sample output
+```
+13/13 tests passed.
+  ✓ PASS  create_escrow — account active, amount correct, index stored
+  ✓ PASS  submit_work — status=submitted, workSubmission set
+  ✓ PASS  request_revision — status=revisionRequested, revisionNote set
+  ✓ PASS  submit_work (resubmit) — status=submitted, workSubmission updated
+  ✓ PASS  approve_work — escrow account closed
+  ✓ PASS  approve_work — freelancer balance +0.1114 SOL (includes rent)
+  ✓ PASS  profile counter incremented (4 → 5)
+  ✓ PASS  cancel path — create_escrow succeeded
+  ✓ PASS  cancel_escrow — account closed
+  ✓ PASS  cancel_escrow — client recovered 0.0614 SOL
+  ✓ PASS  multi-escrow — 2 escrows coexist at different PDAs
+  ✓ PASS    PDA[6]: E3KD3psjU8ewM7RS...
+  ✓ PASS    PDA[7]: CpgLZuZ9nBHE2GRP...
+```
+
+If any test fails, the script exits with code 1. The full error message is printed inline.
+
+---
+
 ## Summary
 
 FreelancePay is built in four layers:
 
-1. **The Solana program** (Rust/Anchor) is the enforcer — holds the money, enforces the rules, immutable, nobody can override it. Five instructions, five escrow states, all transitions verified by cryptographic signatures.
+1. **The Solana program** (Rust/Anchor) is the enforcer — holds the money, enforces the rules, immutable, nobody can override it. Six instructions, five escrow states, all transitions verified by cryptographic signatures. A `ClientProfile` account tracks each client's escrow counter, enabling unlimited simultaneous escrows per wallet.
 
 2. **The Next.js website** is the interface — reads from Solana, lets users interact, routes all blockchain calls through the `useEscrow` hook. The `/api/upload` route safely handles file uploads server-side without exposing the Pinata JWT to the browser.
 
@@ -1234,3 +1405,5 @@ The key insight is that **trust is replaced by code**. Neither the client nor th
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
+
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID.*

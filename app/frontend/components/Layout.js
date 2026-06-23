@@ -28,10 +28,9 @@ export default function Layout({ children, title = "FreelancePay" }) {
         {children}
       </main>
 
-      <footer className="footer" style={{ position: "relative", overflow: "hidden" }}>
-        <div className="hex-texture" aria-hidden />
-        <div style={{ position: "relative" }}><strong>FreelancePay</strong> &nbsp;·&nbsp; Built by UMT Lahore for Colosseum Frontier Hackathon</div>
-        <div style={{ position: "relative", marginTop: 4 }}>
+      <footer className="footer">
+        <div><strong>FreelancePay</strong> &nbsp;·&nbsp; Built by UMT Lahore for Colosseum Frontier Hackathon</div>
+        <div style={{ marginTop: 4 }}>
           Powered by <span>Solana</span> &nbsp;·&nbsp;
           <span style={{ color: "var(--warn)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "0.3rem", verticalAlign: "middle" }}>
             <AlertTriangle size={13} strokeWidth={2.2} aria-hidden />

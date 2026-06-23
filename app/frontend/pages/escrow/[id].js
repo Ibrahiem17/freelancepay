@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { Check, X, RotateCcw, Paperclip, Download, Zap, Lock } from "lucide-react";
+import { Check, X, RotateCcw, Paperclip, Download, Zap } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -29,19 +29,6 @@ function StatusBadge({ status }) {
       {STATUS_LABELS[status] || status}
     </span>
   );
-}
-
-const STAMP_MAP = {
-  active:            { cls: "stamp--locked",   label: "Locked"    },
-  submitted:         { cls: "stamp--escrow",   label: "In Escrow" },
-  revisionRequested: { cls: "stamp--revision", label: "Revision"  },
-  completed:         { cls: "stamp--released", label: "Released"  },
-  cancelled:         { cls: "stamp--refunded", label: "Refunded"  },
-};
-function Stamp({ status }) {
-  const s = STAMP_MAP[status];
-  if (!s) return null;
-  return <span className={`stamp ${s.cls}`} aria-hidden>{s.label}</span>;
 }
 
 const TIMELINE = ["active", "submitted", "completed"];
@@ -185,19 +172,9 @@ export default function EscrowDetailPage() {
                   </h1>
                   <div style={{ marginTop: 8 }}><StatusBadge status={escrow.status} /></div>
                 </div>
-                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
-                  <div className="amount amount--lg">{(escrow.amount / LAMPORTS).toFixed(4)} SOL</div>
-                  {escrow.status !== "completed" && escrow.status !== "cancelled" && (
-                    <span className="locked-cue">
-                      <Lock size={11} strokeWidth={2.2} aria-hidden /> held in escrow
-                    </span>
-                  )}
-                  {escrow.status === "completed" && (
-                    <span className="locked-cue locked-cue--released">
-                      <Zap size={11} strokeWidth={2.2} aria-hidden /> released
-                    </span>
-                  )}
-                  <Stamp status={escrow.status} />
+                <div style={{ textAlign: "right" }}>
+                  <div className="card-amount">{(escrow.amount / LAMPORTS).toFixed(4)} SOL</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 4 }}>locked in escrow</div>
                 </div>
               </div>
 
