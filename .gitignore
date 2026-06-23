@@ -25,6 +25,12 @@ Thumbs.db
 .vscode/
 .idea/
 
+# PostgreSQL Docker volume
+postgres-data/
+
+# Prisma generated
+app/frontend/node_modules/.prisma/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

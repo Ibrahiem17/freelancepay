@@ -24,6 +24,8 @@
 16. [What Happens When Something Goes Wrong](#16-what-happens-when-something-goes-wrong)
 17. [Current Limitations](#17-current-limitations)
 18. [Developer Scripts — Setup, Airdrop, Tests](#18-developer-scripts--setup-airdrop-tests)
+19. [Layer 5 — The Database (PostgreSQL + Prisma)](#19-layer-5--the-database-postgresql--prisma)
+20. [Authentication — Wallet Sign-In (JWT)](#20-authentication--wallet-sign-in-jwt)
 
 ---
 
@@ -118,15 +120,27 @@ seEscrow.js  (blockchain bridge)            │
 │  Returns content-addressed URLs (CIDs).                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│          LAYER 5 — POSTGRESQL DATABASE (Supabase)           │
+│                                                             │
+│  Prisma ORM · 5 models: User, Escrow, Notification,        │
+│  Review, JobPost · Off-chain index + user profile store     │
+│  Connection: Supabase cloud (db.kattosbfzvqrchvpjkim.       │
+│  supabase.co) via DATABASE_URL in .env.local               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **Layer 1 (Solana)** — the source of truth. All escrow data, all money, all status live here. Nothing can be faked.
 
-**Layer 2 (Website)** — the interface. Reads from Solana and lets users take actions. Stores nothing itself.
+**Layer 2 (Website)** — the interface. Reads from Solana and lets users take actions. Routes server-side requests through the Prisma singleton.
 
 **Layer 3 (Design System)** — the visual language. A complete token-based CSS system that makes every pixel consistent: colors, typography, spacing, animations, component styles.
 
 **Layer 4 (Visual Identity)** — domain-specific UI elements that make the product feel like a "crypto escrow" product: rubber stamps, lock cues, vault illustration, hex textures.
+
+**Layer 5 (PostgreSQL/Prisma)** — the off-chain data store. Caches on-chain escrow state, stores user profiles, notifications, job posts, and reviews that don't belong on-chain.
 
 **Pinata/IPFS** — optional file storage for deliverable attachments.
 
@@ -316,6 +330,17 @@ app/frontend/
 │   ├── Layout.js        ← page shell (head, navbar, footer, SVG filter)
 │   ├── Navbar.js        ← top navigation bar
 │   └── Toast.js         ← slide-in notification popup
+├── pages/api/auth/
+│   ├── challenge.js     ← GET ?wallet= → returns { message, nonce }
+│   ├── verify.js        ← POST { wallet, signatureBase58, nonce } → sets JWT cookie
+│   ├── me.js            ← GET → returns current user or 401
+│   └── logout.js        ← POST → clears JWT cookie
+├── hooks/
+│   └── useAuth.js       ← auth state hook (signIn, signOut, user, isAuthenticated)
+├── lib/
+│   ├── prisma.js        ← Prisma singleton client
+│   ├── auth.js          ← generateJWT, verifyJWT, setCookie, clearCookie
+│   └── cache.js         ← nonce store (single-use, 5 min TTL) + rate limiter
 ├── scripts/             ← developer tools (Phase 1 & 2)
 │   ├── verify-setup.js  ← 8-check environment verifier (run before dev)
 │   ├── airdrop-devnet.js ← CLI tool to request Devnet test SOL
@@ -1203,10 +1228,18 @@ The security doesn't rely on the website being honest. Even if someone built a f
 | Client escrow counter + profile | Solana blockchain (`ClientProfile` PDA) | Anyone | Only via `initialize_client_profile` / `create_escrow` |
 | Uploaded deliverable files | Pinata/IPFS | Anyone with the URL | Nobody (content-addressed, immutable) |
 | IPFS file URL | Inside `work_submission` on Solana | Anyone | Only via `submit_work` instruction |
+| User profiles (displayName, bio, skills, ratings) | PostgreSQL `User` table (Supabase) | Server-side API routes | Authenticated API calls |
+| Cached escrow state (off-chain mirror) | PostgreSQL `Escrow` table | Server-side API routes | Indexer/sync job |
+| Notifications | PostgreSQL `Notification` table | Recipient user via API | Server-side on escrow events |
+| Job posts | PostgreSQL `JobPost` table | Any authenticated user | Posting client via API |
+| Reviews | PostgreSQL `Review` table | Any authenticated user | Client after escrow completes |
 | `PINATA_JWT` | `.env.local` (server-side env var) | Only the server process | The developer |
+| `DATABASE_URL` | `.env.local` + `.env` (server-side) | Only the server process | The developer |
+| `JWT_SECRET` | `.env.local` (server-side env var) | Only the server process | The developer |
+| `fp_auth` JWT cookie | Browser httpOnly cookie | Only the server (httpOnly) | Issued on sign-in, cleared on logout |
 | Wallet private key | Inside Phantom browser extension | Only Phantom | The wallet owner |
 
-**No database.** There is no PostgreSQL, MySQL, or Firebase. The blockchain IS the database. Data is permanent and survives even if FreelancePay's website goes offline.
+**Two data layers exist.** Solana is the authoritative source of truth for all financial data — the blockchain IS the escrow ledger. PostgreSQL (Supabase) is the off-chain companion store for data that doesn't belong on a blockchain: user display names, notification history, job listings, and reviews. On-chain data survives if the website goes offline; PostgreSQL data does not, but it is also non-financial and re-seedable.
 
 ---
 
@@ -1285,7 +1318,7 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 **Devnet only.** The SOL used has no real monetary value. Switching to Solana mainnet requires a security audit of the program.
 
-**No real-time notifications.** When the client requests a revision, the freelancer has no way of knowing without manually refreshing their dashboard. No emails, push notifications, or WebSocket updates exist.
+**No real-time notifications yet.** The `Notification` table exists in PostgreSQL and is seeded with test data, but no API routes or UI yet consume it. When the client requests a revision, the freelancer still has no way of knowing without refreshing. Wiring up the notification feed (polling `/api/notifications`) is a Phase 4 task.
 
 **File history lost on resubmission.** Each `submit_work` overwrites the previous `work_submission` on-chain. Round 1's delivery is gone when round 2 is submitted. No audit trail of previous submissions.
 
@@ -1388,9 +1421,438 @@ If any test fails, the script exits with code 1. The full error message is print
 
 ---
 
+## 19. Layer 5 — The Database (PostgreSQL + Prisma)
+
+### Why a Database?
+
+Solana is excellent for financial data — tamper-proof, permanent, decentralized. But many things don't belong on a blockchain:
+
+- **User profiles** — display names, bios, skill tags, avatar URLs. Storing these on-chain would cost real SOL for every character.
+- **Notifications** — ephemeral events ("your work was approved") that need to be created server-side and marked as read. These have no financial meaning.
+- **Job posts** — client job listings change frequently and are not transactions. Putting them on-chain would be wasteful.
+- **Reviews** — ratings and comments that reference a completed escrow but live off-chain for editability and storage efficiency.
+- **Cached escrow state** — the `Escrow` table mirrors on-chain data so server-side API routes can query by status, date, and text without hitting the Solana RPC for every request.
+
+### Technology
+
+- **PostgreSQL 15** — the database engine, hosted on **Supabase** (free tier, cloud)
+- **Prisma 5** — the ORM (Object-Relational Mapper) that translates JavaScript objects to SQL
+- **Supabase connection**: `db.kattosbfzvqrchvpjkim.supabase.co:5432`
+- **`docker-compose.yml`** — also provided for local development with PostgreSQL 15 + pgAdmin (port 5050), if Docker Desktop is installed
+
+### The Prisma Schema (`prisma/schema.prisma`)
+
+Five models, three enums, and six database indexes:
+
+#### `User` model
+
+Stores off-chain profile data linked to a wallet address.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `cuid` | Primary key |
+| `walletAddress` | `String @unique` | Solana public key — the join key between on-chain and off-chain data |
+| `displayName` | `String?` | Optional, max 50 chars |
+| `bio` | `String?` | Optional, max 500 chars |
+| `skills` | `String[]` | PostgreSQL native array (e.g. `["react", "solana", "rust"]`) |
+| `hourlyRate` | `Decimal?` | In SOL |
+| `avatarUrl` | `String?` | IPFS gateway URL |
+| `email` | `String?` | For notification emails only — never used for auth |
+| `emailNotificationsEnabled` | `Boolean` | Default `true` |
+| `isFreelancer` / `isClient` | `Boolean` | Role flags |
+| `averageRating` | `Float?` | Cached, recomputed after each new review |
+| `totalReviews` | `Int` | Incremented after each review |
+
+#### `Escrow` model
+
+Off-chain mirror of the on-chain `EscrowAccount`. Kept in sync by an indexer (Phase 4).
+
+| Field | Type | Notes |
+|---|---|---|
+| `pda` | `String @unique` | The on-chain PDA address — join key to Solana |
+| `clientWallet` | `String` | FK → `User.walletAddress` |
+| `freelancerWallet` | `String` | FK → `User.walletAddress` |
+| `amountLamports` | `BigInt` | Stored as lamports (not SOL) to avoid floating-point errors |
+| `status` | `EscrowStatus` | Enum: `ACTIVE`, `SUBMITTED`, `COMPLETED`, `CANCELLED`, `REVISION_REQUESTED` |
+| `onChainCreatedAt` | `DateTime` | Copied from the on-chain `created_at` field |
+| `lastSyncedAt` | `DateTime` | When the indexer last updated this row |
+
+#### `Notification` model
+
+One row per event. Never deleted — notifications are marked as `read = true`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `recipientWallet` | `String` | FK → `User.walletAddress` |
+| `type` | `NotificationType` | Enum: `ESCROW_CREATED`, `WORK_SUBMITTED`, `REVISION_REQUESTED`, `WORK_APPROVED`, `ESCROW_CANCELLED`, `PAYMENT_RELEASED` |
+| `escrowPda` | `String?` | Which escrow this notification is about |
+| `title` | `String` | Short one-line notification text |
+| `message` | `String` | Full notification body |
+| `read` | `Boolean` | Default `false` |
+
+#### `Review` model
+
+One review per escrow (`escrowPda @unique`). Written by the client after escrow completes.
+
+| Field | Type | Notes |
+|---|---|---|
+| `escrowPda` | `String @unique` | One review per escrow enforced by unique constraint |
+| `clientWallet` | `String` | Who wrote the review |
+| `freelancerWallet` | `String` | Who is being reviewed |
+| `rating` | `Int` | 1–5 stars |
+| `comment` | `String` | Free text |
+
+#### `JobPost` model
+
+Client-posted job listings. Not tied to an on-chain escrow — they exist before a freelancer is hired.
+
+| Field | Type | Notes |
+|---|---|---|
+| `clientWallet` | `String` | FK → `User.walletAddress` |
+| `budgetSOL` | `Decimal` | In SOL (not lamports — for display, not for transactions) |
+| `requiredSkills` | `String[]` | PostgreSQL array |
+| `status` | `JobPostStatus` | Enum: `OPEN`, `FILLED`, `CLOSED` |
+| `expiresAt` | `DateTime?` | Optional auto-close date |
+
+### Database Indexes
+
+Six indexes for efficient querying:
+
+| Index | Purpose |
+|---|---|
+| `User.walletAddress` | Already unique — implicit B-tree index |
+| `Escrow.clientWallet` | Fetch all escrows by client |
+| `Escrow.freelancerWallet` | Fetch all escrows by freelancer |
+| `Escrow.status` | Filter by lifecycle stage |
+| `Notification(recipientWallet, createdAt)` | Paginated notification feed per user |
+| `JobPost(status, createdAt)` | Filter open jobs sorted by newest |
+
+### The Prisma Singleton (`lib/prisma.js`)
+
+```js
+const { PrismaClient } = require("@prisma/client");
+
+const globalForPrisma = globalThis;
+const prisma = globalForPrisma.prisma ?? new PrismaClient({ log: ["error"] });
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+module.exports = prisma;
+```
+
+Next.js hot-reloads modules in development, which would create a new `PrismaClient` on every file save — each one holding an open database connection. The singleton pattern stores the client on `globalThis` (which survives hot-reloads) so at most one connection pool exists per process. In production, `globalThis.prisma` is never set — each serverless function invocation gets a fresh client as expected.
+
+Usage in any API route or server-side function:
+```js
+const prisma = require("../../lib/prisma");
+const users = await prisma.user.findMany();
+```
+
+### The Seed Script (`prisma/seed.js`)
+
+Run with `node prisma/seed.js` from `app/frontend/`. Uses `upsert` throughout so it's safe to run multiple times — it won't create duplicate records.
+
+**Test data created:**
+
+| Record | Details |
+|---|---|
+| User: Alice | `walletAddress: HbkHJYb4...K1Tf`, `isClient: true`, skills: project management, web design |
+| User: Bob | `walletAddress: Abc1XYZ9...KLM`, `isFreelancer: true`, skills: react, solana, rust, `hourlyRate: 0.5` |
+| Escrow | Status: `ACTIVE`, `amountLamports: BigInt("500000000")` (0.5 SOL), title: "Build Solana dApp UI" |
+| Notification | Type: `ESCROW_CREATED` → Bob, message: Alice assigned Bob to the escrow |
+| JobPost | From Alice, title: "Looking for Solana Developer", budget: 2.5 SOL, status: `OPEN` |
+| Review | 5 stars from Alice on a hypothetical completed escrow, comment praising Bob |
+
+`BigInt("500000000")` is used instead of `500000000n` because Node.js BigInt literals (`n` suffix) cause parse errors when the file is loaded by some CJS toolchains.
+
+### File Structure Additions (Phase 3)
+
+```
+app/frontend/
+├── prisma/
+│   ├── schema.prisma     ← 5 models, 3 enums, 6 indexes
+│   ├── seed.js           ← test data (node prisma/seed.js)
+│   └── migrations/
+│       └── 20260623123751_init/
+│           └── migration.sql  ← auto-generated DDL from first migrate run
+├── lib/
+│   └── prisma.js         ← Prisma singleton client
+├── .env                  ← DATABASE_URL for Prisma CLI (gitignored)
+└── .env.local            ← DATABASE_URL for runtime (gitignored)
+
+(project root)
+└── docker-compose.yml    ← PostgreSQL 15 + pgAdmin (optional local dev)
+```
+
+### How Migrations Work
+
+```sh
+cd app/frontend
+npx prisma migrate dev --name init
+```
+
+Prisma reads `schema.prisma`, compares it to the current database state, generates SQL (`migration.sql`), and applies it. The migration file is committed to git — it's a permanent record of every schema change. To apply on a new database, run `npx prisma migrate deploy`.
+
+### Verification
+
+After Phase 3 setup, the database contains:
+
+```
+Users        : 2
+Escrows      : 1
+Notifications: 1
+JobPosts     : 1
+Reviews      : 1
+```
+
+Browse live via Prisma Studio: `npx prisma studio` → `http://localhost:5555`
+
+---
+
+## 20. Authentication — Wallet Sign-In (JWT)
+
+### Why Wallet Auth Instead of Passwords
+
+Traditional apps authenticate with username + password. FreelancePay users already own a Solana wallet — a cryptographic key pair. Rather than asking them to create a separate password, the app proves their identity by asking them to **sign a message** with their private key. If the signature is valid, the server knows the request came from someone who controls that wallet — no password needed.
+
+This is called **Sign-In with Solana** (SIWS), analogous to "Sign-In with Ethereum." It works because:
+- Every Solana wallet is an ed25519 key pair
+- Signing a message produces a 64-byte signature that can only come from the private key
+- The server verifies the signature using only the public key (the wallet address) — the private key never leaves Phantom
+
+### The Full Auth Flow (6 Steps)
+
+```
+Browser (Phantom)                   Next.js Server                  PostgreSQL (Supabase)
+       │                                   │                                │
+  1.  GET /api/auth/challenge?wallet=...   │                                │
+       │ ─────────────────────────────►    │                                │
+       │                         generate nonce + message                   │
+       │ ◄─────────────────────────────   │                                │
+       │  { message, nonce }               │                                │
+       │                                   │                                │
+  2.  wallet.signMessage(encode(message))  │                                │
+       │ [Phantom pops up "Sign message?"] │                                │
+       │ [User clicks Approve]             │                                │
+       │                                   │                                │
+  3.  POST /api/auth/verify                │                                │
+       │  { wallet, signatureBase58, nonce}│                                │
+       │ ─────────────────────────────►    │                                │
+       │                         verify ed25519 sig                         │
+       │                         consumeNonce (single-use)                  │
+       │                                          upsert User ─────────►   │
+       │                                          ◄──── { id, walletAddress}│
+       │                         generateJWT({ wallet, userId })            │
+       │                         Set-Cookie: fp_auth=<token>; HttpOnly      │
+       │ ◄─────────────────────────────   │                                │
+       │  { user }                         │                                │
+       │                                   │                                │
+  4.  GET /api/auth/me  (subsequent reqs)  │                                │
+       │  Cookie: fp_auth=<token>          │                                │
+       │ ─────────────────────────────►    │                                │
+       │                         verifyJWT(cookie)                          │
+       │                         prisma.user.findUnique(wallet)             │
+       │ ◄─────────────────────────────   │                                │
+       │  { user }                         │                                │
+```
+
+### Why a Nonce?
+
+Without a nonce, an attacker who observes the signed message (e.g., from network logs) could replay it to authenticate later. The nonce is:
+- A UUID generated fresh for each sign-in attempt
+- Stored server-side with a **5-minute TTL** in `lib/cache.js`
+- **Consumed on first use** — the cache entry is deleted the moment it's verified
+
+If the nonce doesn't match, has expired, or has already been used, the server returns `401 Invalid or expired nonce`. This makes replay attacks impossible.
+
+### The Challenge Message Format
+
+```
+Welcome to FreelancePay
+
+Sign this message to verify your wallet ownership.
+
+Wallet: HbkHJYb4frYzUjEipaa3wKXyqGvuakPUnSJ2erg6K1Tf
+Nonce: 0f36952f-a330-4004-8e8f-2fbb322e1b2d
+Timestamp: 1782218987
+```
+
+The message is stored in the nonce cache alongside the nonce so that `verify.js` can retrieve and verify against the exact bytes that were signed — the timestamp would be impossible to reconstruct otherwise.
+
+### The Files
+
+#### `lib/auth.js` — JWT Helpers
+
+```js
+const { SignJWT, jwtVerify } = require("jose");
+
+async function generateJWT(payload)       // signs { wallet, userId } with HS256, 7-day expiry
+async function verifyJWT(token)           // returns payload or throws
+async function getUserFromRequest(req)    // reads req.cookies.fp_auth, returns payload or null
+function setCookie(res, token)            // Set-Cookie: fp_auth=token; HttpOnly; SameSite=Lax; ...
+function clearCookie(res)                 // Set-Cookie: fp_auth=; Max-Age=0 (clears it)
+```
+
+`jose` is used instead of `jsonwebtoken` because it's actively maintained and supports modern algorithms. It works with `require()` in Next.js API routes.
+
+**Cookie options:**
+```js
+{ httpOnly: true, secure: false (dev) / true (prod), sameSite: "lax", path: "/", maxAge: 604800 }
+```
+
+`httpOnly: true` means JavaScript in the browser **cannot read the cookie** — `document.cookie` will never show it. Only the browser itself sends it with each request to the server. This prevents XSS attacks from stealing the session token.
+
+#### `lib/cache.js` — In-Memory Nonce Store
+
+Uses `node-cache` (a simple in-process TTL cache). Two caches:
+
+1. **`nonceCache`** — stores `{ nonce, message }` per wallet. TTL: 300 seconds (5 minutes).
+2. **`rateLimitCache`** — stores request count per wallet. TTL: 60 seconds. Max 10 requests per wallet per minute.
+
+`consumeNonce(wallet, nonce)` returns the stored `message` string on success (so `verify.js` can use it), or `null` on failure. The entry is deleted on first successful use.
+
+**Important limitation:** `node-cache` is in-process memory. In a serverless/multi-instance deployment (Vercel), each function invocation has its own memory — the nonce stored in one invocation won't be visible to another. For production at scale, replace with Redis (Upstash) using the same `storeNonce`/`consumeNonce` interface.
+
+#### `pages/api/auth/challenge.js` — Issue Challenge
+
+```
+GET /api/auth/challenge?wallet=<base58_public_key>
+→ 200 { message: "Welcome to FreelancePay...", nonce: "uuid" }
+→ 400 { error: "Invalid wallet address" }       (bad format)
+→ 429 { error: "Too many requests..." }          (rate limited)
+```
+
+#### `pages/api/auth/verify.js` — Verify Signature + Issue JWT
+
+```
+POST /api/auth/verify
+Body: { wallet, signatureBase58, nonce }
+→ 200 { user: { id, walletAddress, displayName, isFreelancer, isClient, avatarUrl } }
+    + Set-Cookie: fp_auth=<jwt>; HttpOnly; ...
+→ 400 { error: "Malformed signature or wallet" }
+→ 401 { error: "Invalid signature" }
+→ 401 { error: "Invalid or expired nonce" }
+→ 500 { error: "Database error" }
+```
+
+Signature verification uses `tweetnacl`:
+```js
+nacl.sign.detached.verify(
+  new TextEncoder().encode(message),   // the exact bytes Phantom signed
+  bs58decode(signatureBase58),         // 64-byte signature
+  bs58decode(wallet)                   // 32-byte ed25519 public key
+)
+```
+
+`bs58` v6 is ESM with a CJS shim — accessed as `require('bs58').default` to get `{ encode, decode }`.
+
+After successful verification, `prisma.user.upsert` creates the user if this is their first sign-in, or does nothing if they already exist. This means connecting a wallet is all that's needed to create a FreelancePay account.
+
+#### `pages/api/auth/me.js` — Session Restore
+
+```
+GET /api/auth/me
+Cookie: fp_auth=<jwt>
+→ 200 { user: { id, walletAddress, displayName, bio, skills, ... } }
+→ 401 { error: "Not authenticated" }
+```
+
+Called on every page load by `useAuth` to restore the session from the cookie. Returns the full user profile (fresh from DB, not from the JWT payload — so profile changes are reflected immediately).
+
+#### `pages/api/auth/logout.js` — Clear Session
+
+```
+POST /api/auth/logout
+→ 200 { success: true }
++ Set-Cookie: fp_auth=; Max-Age=0  (browser deletes the cookie)
+```
+
+#### `hooks/useAuth.js` — React Auth State
+
+```js
+const { user, loading, error, signIn, signOut, isAuthenticated } = useAuth();
+```
+
+**On mount:** fetches `GET /api/auth/me` to restore session from the existing cookie. Sets `loading = false` after response.
+
+**`signIn(walletAddress, signMessageFn)`:** orchestrates the full 4-step flow — challenge → Phantom sign → base58-encode → verify. Updates `user` state on success.
+
+**`signOut()`:** POSTs to `/api/auth/logout`, clears `user` state.
+
+**Auto sign-in/out (useEffect):** watches `wallet.publicKey` from `useWallet()`:
+```js
+useEffect(() => {
+  if (connected && publicKey && !user && !loading && signMessage) {
+    signIn(publicKey.toBase58(), signMessage);   // wallet just connected
+  }
+  if (!connected && user) {
+    signOut();                                    // wallet just disconnected
+  }
+}, [connected, publicKey]);
+```
+
+This means the moment a user clicks "Connect Wallet" and approves in Phantom, the sign-in message automatically appears. There is no separate "Sign In" button.
+
+**`bs58.encode` in the browser:** `useAuth.js` runs in the browser, not Node.js. It uses a dynamic `import('bs58')` (ESM) to encode the signature bytes returned by Phantom into base58.
+
+#### `pages/_app.js` — AuthContext
+
+```js
+export const AuthContext = createContext(null);
+export function useAuthContext() { return useContext(AuthContext); }
+
+function AuthProvider({ children }) {
+  const auth = useAuth();  // must be inside WalletProvider
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+}
+```
+
+`AuthProvider` lives inside `WalletProvider` because `useAuth` calls `useWallet()` internally. Any page or component can call `useAuthContext()` to access `{ user, loading, isAuthenticated, signIn, signOut }` without prop-drilling.
+
+### What Gets Created in the Database
+
+The first time a wallet signs in, `verify.js` calls:
+```js
+prisma.user.upsert({
+  where:  { walletAddress: wallet },
+  create: { walletAddress: wallet },
+  update: {},
+})
+```
+
+This creates a minimal `User` row with only `walletAddress` set. All other fields (`displayName`, `bio`, `skills`, etc.) remain null/default until the user fills in their profile — a future Phase 5 task.
+
+### Security Properties
+
+| Property | How it's achieved |
+|---|---|
+| Server can't be fooled by a fake wallet | ed25519 signature verification — only the real private key could have produced it |
+| Replay attack prevention | Single-use nonce deleted on first use; 5-minute TTL |
+| Session can't be stolen by XSS | `httpOnly` cookie — JS cannot read it |
+| Session can't be forged | JWT signed with `JWT_SECRET`; `jwtVerify` rejects tampered tokens |
+| Session doesn't last forever | JWT expires after 7 days; `maxAge` on cookie matches |
+| Private key never leaves user's device | Only the signature is sent, never the key |
+
+### File Structure Additions (Phase 4)
+
+```
+app/frontend/
+├── pages/api/auth/
+│   ├── challenge.js   ← issue nonce + message
+│   ├── verify.js      ← check sig, upsert user, set cookie
+│   ├── me.js          ← session restore
+│   └── logout.js      ← clear cookie
+├── hooks/
+│   └── useAuth.js     ← auth hook (auto sign-in/out on wallet change)
+└── lib/
+    ├── auth.js        ← JWT helpers + cookie serializer
+    └── cache.js       ← NodeCache nonce store + rate limiter
+```
+
+---
+
 ## Summary
 
-FreelancePay is built in four layers:
+FreelancePay is built in five layers with a cryptographic auth system on top:
 
 1. **The Solana program** (Rust/Anchor) is the enforcer — holds the money, enforces the rules, immutable, nobody can override it. Six instructions, five escrow states, all transitions verified by cryptographic signatures. A `ClientProfile` account tracks each client's escrow counter, enabling unlimited simultaneous escrows per wallet.
 
@@ -1400,10 +1862,14 @@ FreelancePay is built in four layers:
 
 4. **The thematic visual identity** (rubber stamps, lock/zap cues, vault illustration, hex textures, Practice Mode badge) makes the product feel like a "crypto escrow" product — domain-specific visual signals layered on top of the Cozy Sticker Sheet aesthetic without fighting it.
 
+5. **The PostgreSQL database** (Prisma 5 + Supabase) stores everything that doesn't belong on-chain: user profiles, notification history, job posts, and reviews. The `Escrow` table serves as an off-chain index cache for fast server-side queries.
+
+**Auth:** Users sign in by signing a challenge message with their Phantom wallet (ed25519). The server verifies the signature, upserts a `User` row in PostgreSQL, and issues an httpOnly JWT cookie (`fp_auth`). No password exists — wallet ownership is identity. The `useAuth` hook auto-triggers sign-in the moment a wallet connects and auto-signs-out when it disconnects.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`.*

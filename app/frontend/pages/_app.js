@@ -1,12 +1,13 @@
 import "@/styles/globals.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
-import { useMemo, useEffect } from "react";
+import { createContext, useContext, useMemo, useEffect } from "react";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { Buffer } from "buffer";
 import { Gaegu, Nunito } from "next/font/google";
 import { initTheme } from "@/utils/theme";
+import useAuth from "@/hooks/useAuth";
 
 // Make Buffer available globally in the browser for @solana/web3.js
 if (typeof window !== "undefined") {
@@ -29,6 +30,18 @@ const nunito = Nunito({
 
 const DEVNET_RPC = "https://api.devnet.solana.com";
 
+export const AuthContext = createContext(null);
+
+export function useAuthContext() {
+  return useContext(AuthContext);
+}
+
+// AuthProvider must live inside WalletProvider so useAuth can call useWallet()
+function AuthProvider({ children }) {
+  const auth = useAuth();
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+}
+
 export default function App({ Component, pageProps }) {
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
 
@@ -42,7 +55,9 @@ export default function App({ Component, pageProps }) {
       <ConnectionProvider endpoint={DEVNET_RPC}>
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
-            <Component {...pageProps} />
+            <AuthProvider>
+              <Component {...pageProps} />
+            </AuthProvider>
           </WalletModalProvider>
         </WalletProvider>
       </ConnectionProvider>
