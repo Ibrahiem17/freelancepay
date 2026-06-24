@@ -1,6 +1,13 @@
 const prisma = require("./prisma");
 const { fetchAllEscrows, parseStatus } = require("./solana-reader");
 const { emitNotification } = require("./eventBus");
+const {
+  sendWorkSubmittedEmail,
+  sendRevisionRequestedEmail,
+  sendPaymentReleasedEmail,
+  sendEscrowCreatedEmail,
+  sendEscrowCancelledEmail,
+} = require("./email");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -101,6 +108,25 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
       read:      false,
     });
   } catch {}
+
+  // Send email notification. Failures are silently swallowed.
+  try {
+    switch (transitionKey) {
+      case "ACTIVE->SUBMITTED":
+      case "REVISION_REQUESTED->SUBMITTED":
+        await sendWorkSubmittedEmail(escrow);
+        break;
+      case "SUBMITTED->REVISION_REQUESTED":
+        await sendRevisionRequestedEmail(escrow, escrow.revisionNote || "");
+        break;
+      case "SUBMITTED->COMPLETED":
+        await sendPaymentReleasedEmail(escrow);
+        break;
+      case "ACTIVE->CANCELLED":
+        await sendEscrowCancelledEmail(escrow);
+        break;
+    }
+  } catch {}
 }
 
 // ─── Main sync ────────────────────────────────────────────────────────────────
@@ -143,6 +169,16 @@ async function syncEscrows() {
         },
       });
       created++;
+      // Email the freelancer about their new contract (silently)
+      try {
+        await sendEscrowCreatedEmail({
+          pda,
+          clientWallet:     account.client,
+          freelancerWallet: account.freelancer,
+          amountLamports,
+          title:            account.title,
+        });
+      } catch {}
     } else {
       // ── Existing escrow — check for status change ─────────────────────────
       const oldStatus = existing.status;
@@ -168,6 +204,7 @@ async function syncEscrows() {
             freelancerWallet: account.freelancer,
             amountLamports,
             title:            account.title,
+            revisionNote,
           },
           oldStatus,
           newStatus
