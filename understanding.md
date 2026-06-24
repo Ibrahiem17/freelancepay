@@ -31,6 +31,7 @@
 23. [Real-Time Notifications (Server-Sent Events)](#23-real-time-notifications-server-sent-events)
 24. [Email Notifications (Resend)](#24-email-notifications-resend)
 25. [Search & Marketplace](#25-search--marketplace)
+26. [Reviews & Ratings](#26-reviews--ratings)
 
 ---
 
@@ -2685,10 +2686,122 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **Marketplace & Job Board:** `/marketplace` lets clients find freelancers via text search (ILIKE on name/bio), skills filter (PostgreSQL array overlap via Prisma `hasSome`), hourly rate range, and three sort modes. `/jobs` shows open job posts with sidebar filters and cursor-based pagination. `/post-job` is a protected form for clients to publish projects. The landing page uses ISR (`getStaticProps`, revalidate: 60s) to show the top 3 rated freelancers and 3 newest jobs without a client-side fetch. "Hire Me" on any FreelancerCard navigates to `/client?hire=<wallet>` and pre-fills the escrow creation form.
 
+**Reviews & Ratings:** After a contract reaches COMPLETED status, the client can leave a one-time review (1–5 stars + 10–500 char comment). The `POST /api/reviews` endpoint enforces all constraints (client-only, COMPLETED-only, one-per-escrow via unique DB constraint) and uses `prisma.$transaction` to atomically create the review and recalculate the freelancer's `averageRating` and `totalReviews` in the User table. `GET /api/reviews/[walletAddress]` returns a paginated review list with client profiles attached, an aggregate (average + total), and star distribution (counts per 1–5). The `StarRating` component renders in display mode (decimal partial-star via overflow clip on two overlapping lucide `Star` icons) or interactive mode (hover/click with scale animation). The escrow detail page adds a `ReviewForm` card below the completion banner; once submitted it switches to an `ExistingReviewCard`. The `/profile/[walletAddress]` page shows the freelancer's header (avatar, skills, rate, completed jobs) plus the full reviews section with a aggregate summary card (large score + distribution bars) and paginated review cards.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
+
+---
+
+## 26. Reviews & Ratings
+
+### Overview
+
+Phase 11 adds a permanent, public reputation layer to FreelancePay. After any contract reaches COMPLETED status, the client can leave a one-time review — a 1–5 star integer rating plus a 10–500 character comment. Reviews accumulate on the freelancer's profile and are used to sort marketplace results.
+
+**Business rules (enforced server-side):**
+- Only the **client** of a specific escrow can leave a review (`clientWallet === auth.wallet`)
+- The escrow must be in **COMPLETED** status (`escrow.status === "COMPLETED"`)
+- **One review per escrow** — enforced by both a `@unique` constraint on `Review.escrowPda` and a 409 check before the insert
+- Reviews are permanent — no editing or deleting
+
+---
+
+### API — `POST /api/reviews`
+
+Protected (requires `fp_auth` JWT cookie). Validates the body, enforces all rules, then uses `prisma.$transaction(async tx => { ... })` (interactive form) to atomically:
+
+1. Create the `Review` row
+2. Re-aggregate all reviews for the freelancer (`tx.review.aggregate`)
+3. Update `User.averageRating` and `User.totalReviews` in the same transaction
+
+Error responses: 404 (escrow not found), 403 (not the client), 400 (not completed), 409 (already reviewed), 400 (validation).
+
+---
+
+### API — `GET /api/reviews/[walletAddress]`
+
+Public. Returns paginated reviews for a freelancer:
+
+```json
+{
+  "reviews": [{ "id", "rating", "comment", "createdAt", "client": { "walletAddress", "displayName", "avatarUrl" } }],
+  "total": 12,
+  "hasMore": false,
+  "averageRating": 4.7,
+  "totalReviews": 12,
+  "distribution": { "1": 0, "2": 1, "3": 2, "4": 4, "5": 5 }
+}
+```
+
+Client profile is fetched in a single `prisma.user.findMany({ where: { walletAddress: { in: clientWallets } } })` after the reviews query and merged with a `clientMap`.
+
+Star distribution uses `prisma.review.groupBy({ by: ["rating"], _count: { rating: true } })`.
+
+---
+
+### API — `GET /api/users/[walletAddress]`
+
+Public profile endpoint. Returns the user's display info alongside `completedJobs` (filtered `_count` via `freelancerEscrows: { where: { status: "COMPLETED" } }`). `hourlyRate` (Prisma `Decimal`) is serialized via `parseFloat(toString())`.
+
+Note: this route coexists with `pages/api/users/[walletAddress]/escrows.js` — Next.js Pages Router correctly routes `/api/users/[wallet]` to the file and `/api/users/[wallet]/escrows` to the nested file.
+
+---
+
+### Component — `StarRating`
+
+Located at `components/StarRating.js`. Two modes:
+
+**Display mode** (`interactive={false}`, default): Accepts decimal `value` (e.g., 3.7). For each star position `i`, computes `fraction = clamp(value - (i-1), 0, 1)`:
+- `fraction === 1`: fully filled star
+- `fraction === 0`: empty outlined star
+- `0 < fraction < 1`: two `<Star>` icons stacked — grey outline behind, yellow filled star clipped with `overflow: hidden` at `${fraction * 100}%` width
+
+**Interactive mode** (`interactive={true}`): Five clickable `<button>` elements. Hover state tracked with `useState(hovered)`. Stars fill up to the hovered index. `onChange(n)` is called on click. `aria-pressed` reflects the current `value`. No decimal support — only integer selection.
+
+**Sizes:** `sm` (14px) / `md` (20px) / `lg` (28px) via `SIZES` map.
+
+---
+
+### Escrow Detail Page — Review Integration
+
+The escrow detail page (`pages/escrow/[id].js`) loads on-chain data via `fetchEscrowByPDA` (which has no `review` field). A separate `useEffect` fires when `escrow.status === "completed"` and fetches `GET /api/escrows/${id}` (the DB-backed endpoint that already returns `review: review || null`) to populate `review` state.
+
+After the green "Contract Complete" banner, the client sees:
+- **No review yet:** `ReviewForm` card — `StarRating` (lg, interactive) + comment textarea + submit button. Clicking submit with no star increments `shakeKey` (triggers `review-shake` CSS animation) and shows an inline error. On success, `onSuccess(review)` swaps in `ExistingReviewCard`.
+- **Already reviewed:** `ExistingReviewCard` — read-only stars + rating/5 + comment text + submitted date.
+
+Neither card renders for the freelancer.
+
+---
+
+### Profile Page — `pages/profile/[walletAddress].js`
+
+Public route. Fetches user profile and reviews in parallel on mount. Layout:
+
+**Profile header card:**
+- Large avatar (80px, initials fallback with deterministic hue from `charCodeAt`)
+- Display name + freelancer/client badges
+- `StarRating` (sm) + numeric average if there are reviews
+- Bio paragraph
+- Stats row: hourly rate, jobs done, member since
+- Skills pills
+- "Hire Me" button → `/client?hire={walletAddress}` (freelancers only)
+
+**Reviews section (isFreelancer only):**
+- Aggregate card: large numeric score (`reviews-agg-score`) + `StarRating` (md) + "Based on N reviews" + distribution bars (amber `reviews-dist-bar` proportional to `count / totalReviews`)
+- Review cards: 36px client avatar + name + `relativeTime(createdAt)` + `StarRating` (sm) + comment paragraph
+- "Load more reviews" button (offset-based pagination)
+
+---
+
+### CSS — Sections 30 & 31
+
+**Section 30 (Reviews):** `@keyframes shake` (translate X oscillation), `.review-shake`, `.review-card-header`, `.review-client-info`, `.review-client-name`, `.review-time`, `.review-comment`
+
+**Section 31 (Profile):** `.profile-header`, `.profile-top`, `.profile-identity`, `.profile-stats-row`, `.profile-stat`, `.profile-stat-value`, `.profile-stat-label`, `.reviews-agg`, `.reviews-agg-left`, `.reviews-agg-score`, `.reviews-agg-dist`, `.reviews-dist-row`, `.reviews-dist-label`, `.reviews-dist-track`, `.reviews-dist-bar`, `.reviews-dist-count`
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars.*
