@@ -28,6 +28,7 @@
 20. [Authentication — Wallet Sign-In (JWT)](#20-authentication--wallet-sign-in-jwt)
 21. [The Indexer — On-Chain Sync to PostgreSQL](#21-the-indexer--on-chain-sync-to-postgresql)
 22. [The REST API Layer](#22-the-rest-api-layer)
+23. [Real-Time Notifications (Server-Sent Events)](#23-real-time-notifications-server-sent-events)
 
 ---
 
@@ -1326,7 +1327,7 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 **Devnet only.** The SOL used has no real monetary value. Switching to Solana mainnet requires a security audit of the program.
 
-**Notifications are served by the API but not yet surfaced in the UI.** The REST API (`/api/notifications`) returns all notifications for the authenticated user and supports mark-as-read. But no UI component (notification bell, dropdown) consumes it yet. Wiring up the notification bell to poll the endpoint is a future task.
+**Notifications are served in real time via SSE and surfaced in the Navbar bell.** The Navbar shows a live badge and 5-item dropdown. The `/notifications` page shows the full history with filter tabs. The only remaining gap is that the notification bell is hidden on small screens (the navbar collapses links at ≤600px).
 
 **File history lost on resubmission.** Each `submit_work` overwrites the previous `work_submission` on-chain. Round 1's delivery is gone when round 2 is submitted. No audit trail of previous submissions.
 
@@ -2160,6 +2161,210 @@ GET /api/stats                  → 200 { totalEscrows: 5, totalFreelancers: 1, 
 
 ---
 
+## 23. Real-Time Notifications (Server-Sent Events)
+
+### The Problem It Solves
+
+Before Phase 8, a client had to manually refresh their dashboard to discover that a freelancer had submitted work. The indexer wrote `Notification` rows to the database on status transitions, but nothing pushed those events to the open browser tab. Server-Sent Events (SSE) bridge that gap: the server streams events to the browser the moment they are created, with no polling.
+
+### Architecture
+
+```
+[indexer syncs escrow]
+        │
+        ▼
+prisma.notification.create(...)       ← writes to PostgreSQL
+        │
+        ▼
+emitNotification(walletAddress, n)    ← fires EventEmitter in Node.js process
+        │
+        ▼
+EventBus channel: "notification:{wallet}"
+        │
+eventBus.on(channel, ...)  ←──── SSE handler subscribed (one per open browser tab)
+        │
+        ▼
+res.write(`data: ${JSON.stringify(n)}\n\n`)  ← streamed to browser
+        │
+        ▼
+useNotifications hook receives message
+        │
+        ▼
+setNotifications([newNotif, ...prev])  ← React state update → bell badge increments
+```
+
+**Scalability note:** `EventEmitter` is in-process memory. This works when the SSE connection and the indexer cron run in the same Node.js process instance. On Vercel serverless, each function invocation is isolated — the cron function and the SSE handler may be in different instances and will not share the EventEmitter. For production at scale, replace `EventEmitter` with [Pusher](https://pusher.com) or Upstash Redis Pub/Sub using the same `emitNotification` interface. For local development and single-instance deployments, the current approach works correctly.
+
+### `lib/eventBus.js` — The Pub/Sub Singleton
+
+```js
+if (!global._freelancepayEventBus) {
+  global._freelancepayEventBus = new EventEmitter();
+  global._freelancepayEventBus.setMaxListeners(100); // one per open SSE connection
+}
+const eventBus = global._freelancepayEventBus;
+
+function emitNotification(walletAddress, notification) {
+  eventBus.emit(`notification:${walletAddress}`, notification);
+}
+```
+
+Storing on `global` prevents Next.js hot-reloads from creating duplicate EventEmitter instances in development (which would cause duplicate events and "MaxListenersExceeded" warnings).
+
+### `lib/indexer.js` Update
+
+After every `prisma.notification.create(...)`, the returned record is immediately emitted:
+
+```js
+const notification = await prisma.notification.create({ data: { ... } });
+try {
+  emitNotification(recipientWallet, {
+    id: notification.id, type: notification.type, title: notification.title,
+    message: notification.message, escrowPda: notification.escrowPda,
+    createdAt: notification.createdAt.toISOString(), read: false,
+  });
+} catch {}  // SSE emit failures must never break the indexer
+```
+
+The `try-catch` with no body is intentional — if no SSE client is connected for that wallet, the emit is a no-op and throws nothing. The catch is defensive against any unexpected error in the emit path.
+
+### `pages/api/sse/notifications.js` — The SSE Endpoint
+
+```
+GET /api/sse/notifications
+Cookie: fp_auth=<jwt>
+```
+
+1. Authenticates via `getUserFromRequest(req)` — same JWT cookie as all other protected routes. Returns JSON `401` (not SSE format) if not authenticated so the browser doesn't misinterpret it as a stream.
+2. Sets SSE headers and calls `res.flushHeaders()` immediately so the browser knows the connection is open.
+3. Fetches current `unreadCount` from DB and sends the initial event:
+   ```
+   data: {"type":"connected","unreadCount":3}
+   ```
+4. Subscribes to `notification:{wallet}` on the EventBus.
+5. On each event: `res.write('data: ' + JSON.stringify(notification) + '\n\n')`.
+6. Every 25 seconds: sends `': keepalive\n\n'` (SSE comment — not dispatched to the `onmessage` handler). Prevents proxies and load balancers from closing idle connections.
+7. On `req.on('close')`: removes the EventBus listener and clears the keepalive timer.
+
+**Important headers:**
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache, no-transform
+Connection: keep-alive
+X-Accel-Buffering: no        ← disables nginx/Vercel proxy response buffering
+```
+
+`export const config = { api: { bodyParser: false } }` — disables Next.js body parsing for this route (required for long-lived streaming responses).
+
+### `hooks/useNotifications.js` — The React Hook
+
+```js
+const { notifications, unreadCount, connectionStatus, markAsRead, markAllAsRead } = useNotifications({ enabled: !!user });
+```
+
+**On mount (`enabled = true`):**
+1. Calls `fetchInitial()` — `GET /api/notifications` to populate the initial list from DB (covers notifications received before the SSE connection opened).
+2. Calls `connect()` — opens `new EventSource('/api/sse/notifications', { withCredentials: true })`.
+
+**`onmessage` handler:**
+- If `data.type === 'connected'`: sets `unreadCount` from the server's initial count (sync with DB).
+- Otherwise: prepends to `notifications` array, increments `unreadCount` by 1.
+
+**Auto-reconnect with exponential backoff:**
+```js
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000]; // ms
+```
+On `onerror`, the EventSource is closed and a reconnect is scheduled after the next delay. After all 6 delays (up to 30s total), reconnect attempts stop — the user is likely offline. The attempt counter resets on a successful `onopen`.
+
+**Cleanup on unmount:** `esRef.current.close()` and `clearTimeout(reconnectTimerRef.current)`.
+
+### `components/Navbar.js` Update
+
+The notification bell appears in the navbar only when the user is authenticated:
+
+```js
+const auth = useAuthContext();           // reads from AuthContext in _app.js
+const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications({ enabled: !!auth?.user });
+```
+
+**Bell button (`.btn-bell`):**
+- 36×36 circle with `var(--ink)` border
+- Shows `.bell-badge` with lavender background when `unreadCount > 0`
+- Badge text: count, or `"99+"` if > 99
+- Clicking toggles the dropdown
+
+**Dropdown (`.notif-dropdown`):**
+- 320px wide, absolute-positioned below bell, `z-index: var(--z-overlay)`
+- Shows the 5 most recent notifications
+- Outside-click detection via `useRef` + `mousedown` event listener on `document`
+- Each row has a type icon, title, message (truncated), and relative timestamp ("3m ago", "2d ago")
+- Unread rows have `var(--lav-lo)` background
+- Footer: "Mark all read" | "View all notifications →" link to `/notifications`
+
+**Notification type → icon mapping:**
+
+| Type | Icon (Lucide) |
+|---|---|
+| `WORK_SUBMITTED` | `PenLine` |
+| `PAYMENT_RELEASED` | `Zap` |
+| `REVISION_REQUESTED` | `RotateCcw` |
+| `ESCROW_CANCELLED` | `X` |
+| `WORK_APPROVED` | `CheckCircle` |
+| `ESCROW_CREATED` | `Bell` |
+
+### `pages/notifications.js` — Full Notifications Page
+
+Protected route — redirects to `/` if user is not authenticated.
+
+**Tab filters:**
+| Tab | Shows |
+|---|---|
+| All | Every notification |
+| Unread | `read === false` |
+| Work Updates | `WORK_SUBMITTED`, `REVISION_REQUESTED`, `WORK_APPROVED` |
+| Payments | `PAYMENT_RELEASED`, `ESCROW_CANCELLED`, `ESCROW_CREATED` |
+
+Each notification row is a clickable card:
+- Color-coded icon disc (sage for payments, sky for work, peach for revisions, pink for cancelled)
+- Title, message, relative timestamp
+- Purple unread dot (`.notif-unread-dot`) in top-right corner when unread
+- Clicking marks as read and (if `escrowPda` is set) navigates to the escrow detail page
+
+Empty state: large Bell icon + "No notifications yet" / "All caught up!" text.
+
+### File Structure Additions (Phase 8)
+
+```
+app/frontend/
+├── lib/
+│   ├── eventBus.js                        ← EventEmitter singleton + emitNotification()
+│   └── indexer.js                         ← updated: emitNotification after create
+├── hooks/
+│   └── useNotifications.js                ← EventSource + reconnect + markAsRead
+├── components/
+│   └── Navbar.js                          ← updated: bell + dropdown
+├── pages/
+│   ├── notifications.js                   ← full notifications history page
+│   └── api/
+│       └── sse/
+│           └── notifications.js           ← GET SSE stream
+└── styles/
+    └── globals.css                        ← added sections 21–25 (bell, dropdown, tabs, page items)
+```
+
+### Known Limitation: Serverless Process Isolation
+
+On Vercel free or hobby tier, serverless function instances are isolated. The indexer cron (`/api/cron/sync-escrows`) runs in one function instance; the SSE handler (`/api/sse/notifications`) runs in another. The in-memory EventEmitter cannot cross process boundaries, so real-time pushes will not fire in production.
+
+**Fix options:**
+- Pusher: replace `emitNotification()` with `pusher.trigger(channel, event, data)` — Pusher handles the broadcast infrastructure.
+- Upstash Redis: use `redis.publish(channel, JSON.stringify(data))` with a Redis subscriber in the SSE handler.
+- Vercel Edge Runtime: not applicable here (requires ESM and no Node.js built-ins).
+
+For local development and small-scale single-server deployments, the current implementation works end-to-end.
+
+---
+
 ## Summary
 
 FreelancePay is built in five layers with a cryptographic auth system on top:
@@ -2180,10 +2385,12 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **The REST API:** Seven endpoint groups (`/api/escrows`, `/api/escrows/[pda]`, `/api/users/[wallet]/escrows`, `/api/notifications`, `/api/notifications/[id]/read`, `/api/notifications/read-all`, `/api/stats`) serve PostgreSQL data over HTTP. All endpoints share a helper (`lib/api-helpers.js`) that handles BigInt serialization, auth gating, pagination parsing, and SOL conversion. Stats are module-level cached for 5 minutes. Notification routes are protected by the `fp_auth` JWT cookie.
 
+**Real-Time Notifications:** An `EventEmitter` singleton (`lib/eventBus.js`) receives events from the indexer immediately after each `Notification` DB write. The SSE endpoint (`/api/sse/notifications`) keeps a long-lived HTTP connection open per authenticated user, streams events as `data: {...}\n\n` messages, and sends a 25-second keepalive comment. The `useNotifications` hook opens an `EventSource`, handles the initial state from `/api/notifications`, and auto-reconnects with exponential backoff. The Navbar bell shows a live badge and 5-item dropdown; the `/notifications` page shows the full history with tab filters.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs.*
