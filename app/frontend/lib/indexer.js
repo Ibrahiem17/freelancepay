@@ -1,5 +1,6 @@
 const prisma = require("./prisma");
 const { fetchAllEscrows, parseStatus } = require("./solana-reader");
+const { emitNotification } = require("./eventBus");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
       return;
   }
 
-  await prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       recipientWallet,
       type:      rule.type,
@@ -86,6 +87,20 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
       message,
     },
   });
+
+  // Push to any open SSE connections for this wallet.
+  // Fails silently — SSE emit errors must never break the indexer.
+  try {
+    emitNotification(recipientWallet, {
+      id:        notification.id,
+      type:      notification.type,
+      title:     notification.title,
+      message:   notification.message,
+      escrowPda: notification.escrowPda,
+      createdAt: notification.createdAt.toISOString(),
+      read:      false,
+    });
+  } catch {}
 }
 
 // ─── Main sync ────────────────────────────────────────────────────────────────
