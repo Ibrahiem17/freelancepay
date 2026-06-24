@@ -30,6 +30,7 @@
 22. [The REST API Layer](#22-the-rest-api-layer)
 23. [Real-Time Notifications (Server-Sent Events)](#23-real-time-notifications-server-sent-events)
 24. [Email Notifications (Resend)](#24-email-notifications-resend)
+25. [Search & Marketplace](#25-search--marketplace)
 
 ---
 
@@ -2490,6 +2491,174 @@ app/frontend/
 
 ---
 
+## 25. Search & Marketplace
+
+### Overview
+
+Phase 10 adds a two-sided discovery layer on top of the escrow system. Clients can browse and hire freelancers from a searchable directory; freelancers can browse and apply to open job posts from clients. The marketplace is entirely backed by PostgreSQL — no on-chain reads at browse time.
+
+### API — `GET /api/search/freelancers`
+
+Public endpoint. Returns paginated freelancers with full-text search, skills overlap filter, hourly rate range, and three sort modes.
+
+**Query params:**
+
+| Param | Type | Behaviour |
+|---|---|---|
+| `q` | string | ILIKE on `displayName` and `bio` (case-insensitive, Prisma `mode: "insensitive"`) |
+| `skills` | comma-separated | Prisma `hasSome` — returns users whose `skills` array overlaps with the list |
+| `sortBy` | `rating` / `earnings` / `newest` | `rating` → `averageRating DESC NULLS LAST`; `earnings` → `freelancerEscrows._count DESC`; `newest` → `createdAt DESC` |
+| `minRate` / `maxRate` | decimal | Filters on `hourlyRate` (Prisma Decimal comparison) |
+| `limit` / `offset` | int | Offset-based pagination (simpler for the load-more UI pattern) |
+
+**Response shape:**
+```json
+{
+  "freelancers": [{
+    "walletAddress": "...",
+    "displayName": "...",
+    "bio": "...",
+    "skills": ["react", "solana"],
+    "hourlyRate": 0.05,
+    "avatarUrl": null,
+    "averageRating": 4.8,
+    "totalReviews": 12,
+    "completedJobs": 7
+  }],
+  "total": 42,
+  "hasMore": true
+}
+```
+
+`completedJobs` is computed via a filtered `_count` on `freelancerEscrows` (status = `COMPLETED`). `hourlyRate` is a Prisma `Decimal` — serialized to `float` before return.
+
+### API — `GET /api/jobs` and `POST /api/jobs`
+
+**GET** (public): paginated job list with cursor-based pagination (cursor = `JobPost.id`). Filters: `q` (title/description ILIKE), `skills` (hasSome), `minBudget`/`maxBudget` (Decimal), `status` (default `OPEN`). Includes client profile in each result.
+
+**POST** (protected — `isClient: true` required): creates a new `JobPost`. Validates:
+- title: 5–100 chars
+- description: 20–2000 chars
+- budgetSOL: > 0
+- requiredSkills: array, max 20 items
+
+Returns 201 with the created job.
+
+### API — `GET/PATCH/DELETE /api/jobs/[id]`
+
+- **GET**: returns single job with client profile.
+- **PATCH**: authenticated, owner-only. Updates any subset of title/description/budgetSOL/requiredSkills/status/expiresAt. Each field independently validated.
+- **DELETE**: authenticated, owner-only. Soft-delete: sets `status = CLOSED`. No row is ever removed from the DB.
+
+### Page — `/marketplace` ("Find a Freelancer")
+
+```
+┌─────────────────────────────────────────────────────┐
+│  HERO: "Find Pakistan's Top Freelancers"             │
+│  [🔍 search input ──────────────────] [Filters ▼]   │
+└─────────────────────────────────────────────────────┘
+│  FILTER PANEL (collapsible):                        │
+│  Skills: [react] [solana] [rust] [node.js] …        │
+│  Sort: [Best Rated ▼]   Rate: [min] – [max] SOL     │
+├─────────────────────────────────────────────────────┤
+│  RESULTS GRID (3-col desktop, 2-col tablet, 1 mob)  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐            │
+│  │ [Avatar] │ │          │ │          │            │
+│  │ Name     │ │          │ │          │            │
+│  │ Skills   │ │          │ │          │            │
+│  │ ★ 4.8   │ │          │ │          │            │
+│  │ 0.05/hr  │ │          │ │          │            │
+│  │ [View]   │ │          │ │          │            │
+│  │ [Hire]   │ │          │ │          │            │
+│  └──────────┘ └──────────┘ └──────────┘            │
+│  [Load more]                                        │
+└─────────────────────────────────────────────────────┘
+```
+
+**Data flow:** on mount and on any filter change (300ms debounce), fetches `/api/search/freelancers` with current params. "Load more" appends the next page (offset += limit). Skeleton cards shown during loading.
+
+**FreelancerCard fields:** avatar (with initial-letter fallback), display name, truncated wallet, bio excerpt (80 chars), skill pills (up to 4 + "+N more"), star rating, review count, hourly rate or "Rate negotiable", completed job count.
+
+**"Hire Me" button:** navigates to `/client?hire=<walletAddress>`. The client page reads this query param via `useEffect` on `router.query.hire` and pre-fills the freelancer wallet input in the create-escrow form.
+
+**"View Profile" button:** navigates to `/profile/<walletAddress>` (profile page is a future addition).
+
+### Page — `/jobs` ("Browse Jobs")
+
+```
+┌──────────────────────────────────────────────────────┐
+│  HERO: "Find Your Next Project"                      │
+│  [🔍 search input ─────────────────] [+ Post Job]   │
+├──────────────────────┬───────────────────────────────┤
+│  SIDEBAR FILTERS     │  JOB LIST                     │
+│  Posted within:      │  ┌─────────────────────────┐  │
+│  [Any] [24h] [Week]  │  │ [Avatar] Client · 2.5SOL│  │
+│                      │  │ Job Title               │  │
+│  Skills:             │  │ Description excerpt...  │  │
+│  [react] [solana]…   │  │ [react] [solana]        │  │
+│                      │  │ 3h ago  [View] [Contact]│  │
+│  Budget (SOL):       │  └─────────────────────────┘  │
+│  [min] – [max]       │  …                            │
+│  [Clear filters]     │  [Load more]                  │
+└──────────────────────┴───────────────────────────────┘
+```
+
+The "posted within" filter is applied client-side (the API returns a full page; the page filters by `createdAt` threshold). The `+ Post Job` button is only shown to authenticated users.
+
+### Page — `/post-job` (protected)
+
+Redirects to `/` if not authenticated. Form fields: title, description (textarea), budget (SOL), required skills (tag input — type + Enter/comma, or click autocomplete suggestions), expiry date (optional). Submits to `POST /api/jobs`. On success, redirects to `/jobs`.
+
+Skills input UX: typed skills are added as pill tags with a `×` remove button. Pre-defined suggestions (react, solana, rust, etc.) shown as clickable pills below the input. Max 20 skills enforced client-side and server-side.
+
+### Landing Page Update (`/`)
+
+`getStaticProps` (ISR, `revalidate: 60`) runs server-side at build time and every 60 seconds after. Calls Prisma directly (not via HTTP) to fetch:
+- Top 3 freelancers by `averageRating DESC NULLS LAST`
+- 3 newest `OPEN` job posts
+
+If the DB query fails, returns empty arrays (sections are hidden when empty). The ISR pattern means the landing page always shows fresh data without a client-side fetch on every visit.
+
+Two new sections appear between "How It Works" and the bottom CTA:
+- **Featured Freelancers** — compact FreelancerCard × 3, "Browse All Freelancers →" link
+- **Latest Job Posts** — compact JobCard × 3, "Browse All Jobs →" link
+
+### File Map
+
+```
+app/frontend/
+├── pages/
+│   ├── index.js          ← updated: getStaticProps, Featured + Latest sections
+│   ├── marketplace.js    ← new: Find a Freelancer page
+│   ├── jobs.js           ← new: Browse Jobs page
+│   ├── post-job.js       ← new: Post a Job form (protected)
+│   ├── client.js         ← updated: reads ?hire= query param
+│   └── api/
+│       ├── search/
+│       │   └── freelancers.js  ← GET with text/skills/rate/sort filters
+│       └── jobs/
+│           ├── index.js        ← GET (list) + POST (create, isClient)
+│           └── [id].js         ← GET, PATCH, DELETE (owner-only)
+├── components/
+│   └── Navbar.js         ← updated: Marketplace + Jobs links added
+└── styles/
+    └── globals.css       ← sections 26-29: skill pills, fc-grid, jc-card, responsive
+```
+
+### Key Design Decisions
+
+**Offset vs cursor pagination:** Freelancer search uses offset (simpler load-more UX — user can ask "show me 12 more"). Job list uses cursor (stable ordering even as new jobs are created between pages).
+
+**Prisma `hasSome` for array overlap:** PostgreSQL's `&&` array overlap operator. Prisma generates this natively for `String[]` fields — no raw SQL needed. `skills.split(",").map(s => s.trim().toLowerCase())` normalizes user input before querying.
+
+**`completedJobs` via filtered `_count`:** Prisma 4.3+ supports `_count: { select: { freelancerEscrows: { where: { status: "COMPLETED" } } } }`. This runs as a single SQL query with a conditional COUNT — no N+1.
+
+**Client-side "posted within" filter:** Rather than adding a `createdAt` range param to the jobs API (which would complicate cursor pagination), the jobs page filters the returned page client-side by `createdAt` threshold. Acceptable for small result sets.
+
+**`getStaticProps` with direct Prisma:** Calling Prisma directly in `getStaticProps` avoids the HTTP round-trip to API routes at build time. The Prisma client is a Node.js module — it works fine in the server-side context of `getStaticProps`. `require('../lib/prisma')` inside the function body keeps it out of the client bundle.
+
+---
+
 ## Summary
 
 FreelancePay is built in five layers with a cryptographic auth system on top:
@@ -2514,10 +2683,12 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **Email Notifications:** Transactional emails are sent via Resend for every escrow event. `lib/emailTemplates.js` contains five table-layout HTML email templates with inline CSS (required for Outlook/Gmail). `lib/email.js` resolves the recipient from the DB (checking `emailNotificationsEnabled`), injects the correct unsubscribe URL, and calls the Resend API. `/api/email/unsubscribe` is a public endpoint that verifies a `sha256(wallet + JWT_SECRET)` token and sets `emailNotificationsEnabled = false`, returning a styled HTML confirmation. `/api/test-email` (dev only) lets developers test all five email types without real escrow events.
 
+**Marketplace & Job Board:** `/marketplace` lets clients find freelancers via text search (ILIKE on name/bio), skills filter (PostgreSQL array overlap via Prisma `hasSome`), hourly rate range, and three sort modes. `/jobs` shows open job posts with sidebar filters and cursor-based pagination. `/post-job` is a protected form for clients to publish projects. The landing page uses ISR (`getStaticProps`, revalidate: 60s) to show the top 3 rated freelancers and 3 newest jobs without a client-side fetch. "Hire Me" on any FreelancerCard navigates to `/client?hire=<wallet>` and pre-fills the escrow creation form.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs.*
