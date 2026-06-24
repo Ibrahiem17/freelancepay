@@ -1016,3 +1016,334 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   .page, .page-wide { padding: 1.25rem 1rem 3rem; }
   .notif-dropdown { width: min(320px, calc(100vw - 2rem)); right: -0.5rem; }
 }
+
+/* ── 26. Skill Pills ─────────────────────────────── */
+.skill-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--lav-lo);
+  border: 2px solid var(--lav);
+  color: var(--ink);
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+
+.skill-more {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--line);
+  border: 2px solid var(--line-2);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+/* Toggle skill pill (used in filter bars) */
+.skill-pill--toggle {
+  cursor: pointer;
+  background: var(--paper);
+  border-color: var(--line-2);
+  transition: background var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-spring);
+}
+.skill-pill--toggle:hover {
+  border-color: var(--lav);
+  background: var(--lav-lo);
+  transform: translateY(-1px);
+}
+.skill-pill--active {
+  background: var(--lav);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* Selected skill pill (with remove button) */
+.skill-pill--selected {
+  background: var(--lav);
+  border-color: var(--ink);
+  gap: 5px;
+}
+.skill-remove {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink);
+  opacity: 0.6;
+  transition: opacity var(--t-fast);
+}
+.skill-remove:hover { opacity: 1; }
+
+/* ── 27. Marketplace page ────────────────────────── */
+.mp-hero { background: var(--lav-lo); border-bottom: 3px dashed var(--line); }
+
+.mp-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: var(--r-pill);
+  padding: 6px 8px 6px 14px;
+  max-width: 600px;
+  margin: 0 auto;
+  box-shadow: var(--sh-sm);
+}
+.mp-search-icon { color: var(--ink-soft); flex-shrink: 0; }
+.mp-search-input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  outline: none;
+  min-width: 0;
+}
+.mp-search-input::placeholder { color: var(--ink-soft); }
+
+.mp-filters-bar {
+  padding-block: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-bottom: 3px dashed var(--line);
+  background: var(--paper);
+  margin-bottom: 2rem;
+}
+.mp-filter-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.mp-filter-label { font-size: 0.78rem; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+.mp-filter-row { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
+.mp-skill-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.mp-select-wrap { position: relative; display: inline-flex; align-items: center; }
+.mp-select {
+  appearance: none;
+  background: var(--paper);
+  border: 2.5px solid var(--line-2);
+  border-radius: var(--r-sm);
+  padding: 7px 32px 7px 12px;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+}
+.mp-select:focus { border-color: var(--lav); }
+.mp-select-icon { position: absolute; right: 10px; color: var(--ink-soft); pointer-events: none; }
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.65rem;
+  font-weight: 800;
+  margin-left: 2px;
+}
+
+.mp-results-header { margin-bottom: 1rem; }
+
+.fc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+/* Freelancer Card */
+.fc-card { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.fc-avatar-wrap { flex-shrink: 0; }
+.fc-avatar-img {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2.5px solid var(--line);
+  display: block;
+}
+.fc-avatar-fallback {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.2rem;
+  border: 2.5px solid var(--line);
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.fc-identity { min-width: 0; }
+.fc-name {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-wallet { font-size: 0.75rem; color: var(--ink-soft); font-weight: 600; }
+.fc-bio {
+  font-size: 0.83rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  font-weight: 600;
+  margin: 0;
+}
+.fc-skills { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.fc-meta { display: flex; flex-direction: column; gap: 0.3rem; }
+.fc-meta-row { display: flex; align-items: center; gap: 0.5rem; }
+.fc-rating { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 0.85rem; }
+.fc-rate { font-weight: 700; font-size: 0.85rem; color: var(--brown); }
+
+/* Skeleton loading */
+.fc-card--skeleton {
+  min-height: 220px;
+  background: linear-gradient(90deg, var(--line) 25%, var(--line-2) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border: none;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.mp-empty {
+  text-align: center;
+  padding: 4rem 1rem;
+  color: var(--ink-soft);
+}
+
+/* ── 28. Jobs page ───────────────────────────────── */
+.jobs-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.jobs-sidebar { display: flex; flex-direction: column; gap: 1rem; }
+
+.jobs-filter-card {
+  background: var(--paper);
+  border: 3px dashed var(--line-2);
+  border-radius: var(--r-md);
+  padding: 1rem 1.125rem;
+}
+.jobs-filter-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 0.6rem;
+}
+.jobs-tab-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.jobs-tab {
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: none;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease-out);
+}
+.jobs-tab:hover { background: var(--lav-lo); color: var(--ink); }
+.jobs-tab--active { background: var(--lav); color: var(--ink); border-color: var(--ink); }
+
+.jobs-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* Job Card */
+.jc-card { padding: 1.25rem; }
+.jc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.jc-client-info { display: flex; align-items: center; gap: 0.5rem; }
+.jc-avatar-img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid var(--line); display: block; }
+.jc-avatar-fallback {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border: 2px solid var(--line);
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.jc-client-name { font-size: 0.82rem; font-weight: 700; color: var(--ink-soft); }
+.jc-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  color: var(--ink);
+}
+.jc-title a { color: inherit; }
+.jc-title a:hover { color: var(--brown); }
+.jc-desc {
+  font-size: 0.87rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  font-weight: 600;
+  margin: 0 0 0.6rem;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.jc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* form hint */
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ── 29. Responsive updates ──────────────────────── */
+@media (max-width: 900px) {
+  .fc-grid { grid-template-columns: repeat(2, 1fr); }
+  .jobs-layout { grid-template-columns: 1fr; }
+  .jobs-sidebar { flex-direction: row; flex-wrap: wrap; }
+  .jobs-filter-card { flex: 1; min-width: 200px; }
+}
+@media (max-width: 580px) {
+  .fc-grid { grid-template-columns: 1fr; }
+  .jobs-sidebar { flex-direction: column; }
+  .mp-filters-bar .mp-filter-row { flex-direction: column; align-items: flex-start; }
+}

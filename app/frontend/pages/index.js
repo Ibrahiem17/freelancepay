@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { Lock, PenLine, Zap } from "lucide-react";
+import { Lock, PenLine, Zap, Star, ArrowRight, Briefcase } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -9,9 +9,9 @@ const WalletMultiButton = dynamic(
 import Layout from "@/components/Layout";
 
 const STATS = [
-  { value: "4M+",  label: "Pakistani freelancers" },
-  { value: "0%",   label: "Platform fees" },
-  { value: "<2s",  label: "Payment speed" },
+  { value: "4M+",   label: "Pakistani freelancers" },
+  { value: "0%",    label: "Platform fees" },
+  { value: "<2s",   label: "Payment speed" },
   { value: "$1.5B", label: "Annual earnings at risk" },
 ];
 
@@ -42,8 +42,84 @@ const STEPS = [
   },
 ];
 
-export default function Home() {
-  const { publicKey, connected } = useWallet();
+function truncWallet(addr) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function CompactFreelancerCard({ freelancer }) {
+  const { walletAddress, displayName, skills, averageRating, totalReviews, hourlyRate, avatarUrl } = freelancer;
+  const name = displayName || truncWallet(walletAddress);
+  const initial = name[0].toUpperCase();
+  const colors = ["var(--lav)", "var(--sage)", "var(--sky)", "var(--peach)"];
+  const bg = colors[initial.charCodeAt(0) % colors.length];
+
+  return (
+    <div className="card" data-tilt style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+        {avatarUrl
+          ? <img src={avatarUrl} alt={name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2.5px solid var(--line)" }} />
+          : <div style={{ width: 44, height: 44, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.1rem", border: "2.5px solid var(--line)", flexShrink: 0, color: "var(--ink)" }}>{initial}</div>
+        }
+        <div>
+          <div style={{ fontWeight: 800, fontSize: "0.95rem" }}>{name}</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600 }}>{truncWallet(walletAddress)}</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+        {(skills || []).slice(0, 3).map((s) => <span key={s} className="skill-pill" style={{ fontSize: "0.72rem" }}>{s}</span>)}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem" }}>
+        {averageRating != null
+          ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700 }}>
+              <Star size={12} fill="var(--amber)" strokeWidth={0} style={{ color: "var(--amber)" }} />
+              {averageRating.toFixed(1)}
+              <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>({totalReviews})</span>
+            </span>
+          : <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>No reviews yet</span>
+        }
+        <span style={{ fontWeight: 700, color: "var(--brown)" }}>
+          {hourlyRate != null ? `${hourlyRate} SOL/hr` : "Negotiable"}
+        </span>
+      </div>
+
+      <Link href={`/marketplace`} className="btn btn-sm btn-outline" style={{ textAlign: "center" }}>
+        View on Marketplace
+      </Link>
+    </div>
+  );
+}
+
+function CompactJobCard({ job }) {
+  const { id, title, description, budgetSOL, requiredSkills, createdAt, client } = job;
+  const clientName = client?.displayName || truncWallet(client.walletAddress);
+  const diff = Date.now() - new Date(createdAt).getTime();
+  const hrs  = Math.floor(diff / 3600000);
+  const ago  = hrs < 1 ? "just now" : hrs < 24 ? `${hrs}h ago` : `${Math.floor(hrs / 24)}d ago`;
+
+  return (
+    <div className="card jc-card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+        <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.05rem", margin: 0 }}>{title}</h3>
+        <span className="amount" style={{ fontSize: "1rem", flexShrink: 0, marginLeft: "0.5rem" }}>{budgetSOL} SOL</span>
+      </div>
+      <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", margin: "0 0 0.6rem", lineHeight: 1.5, fontWeight: 600 }}>
+        {description.length > 100 ? description.slice(0, 100) + "…" : description}
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginBottom: "0.6rem" }}>
+        {(requiredSkills || []).slice(0, 3).map((s) => <span key={s} className="skill-pill" style={{ fontSize: "0.72rem" }}>{s}</span>)}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600 }}>{clientName} · {ago}</span>
+        <Link href="/jobs" className="btn btn-sm btn-outline">Browse Jobs</Link>
+      </div>
+    </div>
+  );
+}
+
+export default function Home({ featuredFreelancers = [], latestJobs = [] }) {
+  const { connected } = useWallet();
 
   return (
     <Layout title="Home">
@@ -51,7 +127,6 @@ export default function Home() {
       <section style={{ padding: "5rem 1.5rem 3.5rem", textAlign: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(214,200,236,0.18) 0%, transparent 70%)", pointerEvents: "none" }} />
 
-        {/* "live" badge */}
         <div
           data-enter
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 999, border: "2.5px solid var(--leaf)", background: "var(--sage-lo)", marginBottom: "1.25rem" }}
@@ -82,12 +157,8 @@ export default function Home() {
 
         {connected ? (
           <div data-enter style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/client" className="btn btn-primary magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>
-              I&apos;m a Client →
-            </Link>
-            <Link href="/freelancer" className="btn btn-outline magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>
-              I&apos;m a Freelancer →
-            </Link>
+            <Link href="/client"      className="btn btn-primary magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>I&apos;m a Client →</Link>
+            <Link href="/freelancer"  className="btn btn-outline magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>I&apos;m a Freelancer →</Link>
           </div>
         ) : (
           <div data-enter style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
@@ -143,6 +214,56 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Featured Freelancers ──────────────────── */}
+      {featuredFreelancers.length > 0 && (
+        <section style={{ maxWidth: 900, margin: "0 auto", padding: "0 1.5rem 5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div>
+              <h2 data-reveal style={{ fontFamily: "var(--font-display)", marginBottom: "0.25rem" }}>
+                Featured Freelancers
+              </h2>
+              <p data-reveal style={{ color: "var(--ink-soft)", fontSize: "0.9rem", fontWeight: 600, margin: 0 }}>
+                Top-rated talent ready to work for SOL
+              </p>
+            </div>
+            <Link href="/marketplace" className="btn btn-outline btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+              Browse All <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          <div data-stagger style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+            {featuredFreelancers.map((f) => (
+              <CompactFreelancerCard key={f.walletAddress} freelancer={f} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Latest Jobs ───────────────────────────── */}
+      {latestJobs.length > 0 && (
+        <section style={{ maxWidth: 900, margin: "0 auto", padding: "0 1.5rem 5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div>
+              <h2 data-reveal style={{ fontFamily: "var(--font-display)", marginBottom: "0.25rem" }}>
+                Latest Job Posts
+              </h2>
+              <p data-reveal style={{ color: "var(--ink-soft)", fontSize: "0.9rem", fontWeight: 600, margin: 0 }}>
+                Open projects seeking freelancers right now
+              </p>
+            </div>
+            <Link href="/jobs" className="btn btn-outline btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+              Browse All <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          <div data-stagger style={{ display: "grid", gridTemplateColumns: "repeat(1, 1fr)", gap: "0.75rem" }}>
+            {latestJobs.map((j) => (
+              <CompactJobCard key={j.id} job={j} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── Bottom CTA ───────────────────────────── */}
       <section style={{ maxWidth: 900, margin: "0 auto 4rem", padding: "0 1.5rem" }}>
         <div
@@ -158,8 +279,11 @@ export default function Home() {
           </p>
           {connected ? (
             <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-              <Link href="/client"     className="btn btn-primary magnetic">Create Escrow</Link>
-              <Link href="/freelancer" className="btn btn-outline magnetic">View Contracts</Link>
+              <Link href="/client"      className="btn btn-primary magnetic">Create Escrow</Link>
+              <Link href="/freelancer"  className="btn btn-outline magnetic">View Contracts</Link>
+              <Link href="/marketplace" className="btn btn-success magnetic">
+                <Briefcase size={15} /> Find Freelancers
+              </Link>
             </div>
           ) : (
             <WalletMultiButton />
@@ -168,4 +292,74 @@ export default function Home() {
       </section>
     </Layout>
   );
+}
+
+export async function getStaticProps() {
+  try {
+    const prisma = require("../lib/prisma");
+
+    const [freelancerRows, jobRows] = await Promise.all([
+      prisma.user.findMany({
+        where: { isFreelancer: true },
+        orderBy: [
+          { averageRating: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+        ],
+        take: 3,
+        select: {
+          walletAddress: true,
+          displayName:   true,
+          skills:        true,
+          hourlyRate:    true,
+          avatarUrl:     true,
+          averageRating: true,
+          totalReviews:  true,
+        },
+      }),
+      prisma.jobPost.findMany({
+        where:   { status: "OPEN" },
+        orderBy: { createdAt: "desc" },
+        take:    3,
+        include: {
+          client: {
+            select: { walletAddress: true, displayName: true, avatarUrl: true },
+          },
+        },
+      }),
+    ]);
+
+    const freelancers = freelancerRows.map((u) => ({
+      walletAddress: u.walletAddress,
+      displayName:   u.displayName,
+      skills:        u.skills,
+      hourlyRate:    u.hourlyRate != null ? parseFloat(u.hourlyRate.toString()) : null,
+      avatarUrl:     u.avatarUrl,
+      averageRating: u.averageRating,
+      totalReviews:  u.totalReviews,
+    }));
+
+    const jobs = jobRows.map((j) => ({
+      id:             j.id,
+      title:          j.title,
+      description:    j.description,
+      budgetSOL:      parseFloat(j.budgetSOL.toString()),
+      requiredSkills: j.requiredSkills,
+      createdAt:      j.createdAt.toISOString(),
+      client: {
+        walletAddress: j.client.walletAddress,
+        displayName:   j.client.displayName,
+        avatarUrl:     j.client.avatarUrl,
+      },
+    }));
+
+    return {
+      props: { featuredFreelancers: freelancers, latestJobs: jobs },
+      revalidate: 60,
+    };
+  } catch {
+    return {
+      props:      { featuredFreelancers: [], latestJobs: [] },
+      revalidate: 60,
+    };
+  }
 }

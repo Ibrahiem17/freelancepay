@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { Lock, Check, X, RotateCcw, RefreshCw, Download, Wallet } from "lucide-react";
@@ -165,9 +166,17 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
 
 export default function ClientPage() {
   const { publicKey } = useWallet();
+  const router = useRouter();
   const { createEscrow, approveWork, cancelEscrow, requestRevision, fetchMyEscrowsAsClient } = useEscrow();
 
   const [form, setForm]       = useState({ title: "", description: "", freelancer: "", amount: "" });
+
+  // Pre-fill freelancer wallet from ?hire= query param (set by Marketplace "Hire Me" button)
+  useEffect(() => {
+    if (router.query.hire) {
+      setForm((f) => ({ ...f, freelancer: router.query.hire }));
+    }
+  }, [router.query.hire]);
   const [escrows, setEscrows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
