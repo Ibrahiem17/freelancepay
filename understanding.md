@@ -32,6 +32,7 @@
 24. [Email Notifications (Resend)](#24-email-notifications-resend)
 25. [Search & Marketplace](#25-search--marketplace)
 26. [Reviews & Ratings](#26-reviews--ratings)
+27. [Analytics Dashboard & CSV Export](#27-analytics-dashboard--csv-export)
 
 ---
 
@@ -2686,6 +2687,8 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **Marketplace & Job Board:** `/marketplace` lets clients find freelancers via text search (ILIKE on name/bio), skills filter (PostgreSQL array overlap via Prisma `hasSome`), hourly rate range, and three sort modes. `/jobs` shows open job posts with sidebar filters and cursor-based pagination. `/post-job` is a protected form for clients to publish projects. The landing page uses ISR (`getStaticProps`, revalidate: 60s) to show the top 3 rated freelancers and 3 newest jobs without a client-side fetch. "Hire Me" on any FreelancerCard navigates to `/client?hire=<wallet>` and pre-fills the escrow creation form.
 
+**Analytics Dashboard:** `/analytics` (protected) shows four stat cards (total earned, total spent, pending earnings, completed jobs count), a recharts `BarChart` of the last 12 months of SOL activity (Earned + Spent bars, hex fills because CSS variables don't work in SVG), a top-3 counterparties list ranked by total SOL, and a 10-row recent activity table. `GET /api/analytics/me` computes all figures server-side: summary fields are calculated with BigInt accumulation over filtered escrow arrays; monthly bars are produced by a Prisma `$queryRaw` `date_trunc('month', ...)` GROUP BY and any missing months are gap-filled to "0.0000" in JavaScript. `GET /api/analytics/export` streams a CSV download (`Content-Disposition: attachment`) with columns Date/Title/PDA/Role/Counterparty/Status/AmountSOL; `escapeCSV()` wraps cells containing commas or quotes in double-quotes and escapes embedded quotes by doubling them. The Navbar's Analytics link is only rendered for authenticated users.
+
 **Reviews & Ratings:** After a contract reaches COMPLETED status, the client can leave a one-time review (1–5 stars + 10–500 char comment). The `POST /api/reviews` endpoint enforces all constraints (client-only, COMPLETED-only, one-per-escrow via unique DB constraint) and uses `prisma.$transaction` to atomically create the review and recalculate the freelancer's `averageRating` and `totalReviews` in the User table. `GET /api/reviews/[walletAddress]` returns a paginated review list with client profiles attached, an aggregate (average + total), and star distribution (counts per 1–5). The `StarRating` component renders in display mode (decimal partial-star via overflow clip on two overlapping lucide `Star` icons) or interactive mode (hover/click with scale animation). The escrow detail page adds a `ReviewForm` card below the completion banner; once submitted it switches to an `ExistingReviewCard`. The `/profile/[walletAddress]` page shows the freelancer's header (avatar, skills, rate, completed jobs) plus the full reviews section with a aggregate summary card (large score + distribution bars) and paginated review cards.
 
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
@@ -2802,6 +2805,91 @@ Public route. Fetches user profile and reviews in parallel on mount. Layout:
 
 ---
 
+---
+
+## 27. Analytics Dashboard & CSV Export
+
+### Overview
+
+Phase 12 gives authenticated users a personalised financial dashboard at `/analytics`. Both freelancers (earnings view) and clients (spending view) see their data from the same endpoint — the API joins both roles and returns figures for each.
+
+---
+
+### API — `GET /api/analytics/me`
+
+Protected. Returns a single JSON object with four keys:
+
+**`summary`**
+- `totalEarnedSOL` / `totalSpentSOL` — BigInt accumulation over `COMPLETED` escrows where the wallet is freelancer / client respectively, converted with `(Number(bigint) / 1_000_000_000).toFixed(4)`
+- `pendingEarningsSOL` — sum of `ACTIVE` + `SUBMITTED` escrows where wallet is freelancer
+- `activeEscrowsCount` / `completedEscrowsCount` / `cancelledEscrowsCount` — deduped across both roles
+- `averageRating` — read from `User.averageRating`
+
+**`monthlyData`** — array of 12 objects `{ month: "YYYY-MM", earned: string, spent: string }`, always 12 entries, newest last.
+
+Built with `Prisma.$queryRaw` using `date_trunc('month', "onChainCreatedAt")` GROUP BY for both freelancer-completed and client-completed escrows. Results land in a `Map<YYYY-MM, BigInt>`. A `buildMonthSlots()` helper generates the 12 keys and the map is queried with `?? 0n` for any missing months — guaranteeing no gaps in the chart data.
+
+**`topCounterparties`** — top 3 wallets by total SOL transacted, merged across both completed-freelancer and completed-client escrow sets, enriched with `displayName` / `avatarUrl` from a single `User.findMany` call.
+
+**`recentActivity`** — last 10 completed or cancelled escrows, tagged with `role: "freelancer" | "client"`.
+
+---
+
+### API — `GET /api/analytics/export`
+
+Protected. Produces a CSV file download.
+
+Response headers:
+```
+Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename="freelancepay-{wallet8}-{date}.csv"
+```
+
+Columns: `Date, EscrowTitle, EscrowPDA, MyRole, CounterpartyWallet, Status, AmountSOL`
+
+All escrows (not just completed) are included, newest first. The `escapeCSV(value)` helper:
+- Returns the value as-is if it contains no comma, double-quote, or newline
+- Wraps in `"..."` and doubles any internal `"` characters if any of those are present
+
+BigInt lamports are serialized via `(Number(bigint) / 1_000_000_000).toFixed(4)` — safe because no escrow amount exceeds `Number.MAX_SAFE_INTEGER`.
+
+The frontend uses a plain `<a href="/api/analytics/export" download>` link rather than `fetch + blob` — the browser handles the download natively when the `Content-Disposition: attachment` header is present.
+
+---
+
+### Page — `pages/analytics.js`
+
+Protected: redirects to `/` if `auth.user` is null after loading.
+
+**Section A — Stats strip** (`an-stats-strip`, 4-column CSS grid):
+Four `.card.an-stat-card` tiles: Total Earned, Total Spent, Pending Earnings, Jobs Completed. The Pending card gets an amber border + `#fffbeb` background when `pendingEarningsSOL > 0` to draw attention to money in flight.
+
+**Section B — Monthly chart:**
+recharts is dynamically imported with `{ ssr: false }` because it calls `window` internally. Each component (`BarChart`, `Bar`, `XAxis`, `YAxis`, `CartesianGrid`, `Tooltip`, `Legend`, `ResponsiveContainer`) is imported individually to keep the dynamic import granular.
+
+**Critical caveat — hex fills:** recharts renders SVG. CSS custom properties (`var(--sage)`) resolve in the DOM but not inside SVG `fill` attributes at paint time. Hard-coded hex strings are used instead:
+- Earned bar: `"#c2d8b6"` (same value as `--sage`)
+- Spent bar: `"#d6c8ec"` (same value as `--lav`)
+
+A `CustomTooltip` component renders a styled card with both values in the project's font, matching the overall design system.
+
+**Section C — Top counterparties:**
+Three rows: rank number + small avatar + name (linked to `/profile/[wallet]`) + role label + total SOL.
+
+**Section D — Recent activity table** (`an-activity-table`):
+CSS grid with 5 columns: `72px 1fr 72px 90px 80px`. Header row (`an-activity-header`) uses uppercase labels. Each `an-activity-row` shows date, contract title (linked to `/escrow/[pda]`), role, status badge, and SOL amount.
+
+---
+
+### CSS — Section 32
+
+`.an-stats-strip` — 4-column CSS grid, collapses to 2 columns at 1000px.
+`.an-stat-card` / `.an-stat-icon` / `.an-stat-value` / `.an-stat-label` — stat tile internals.
+`.an-bottom-grid` — `280px 1fr` grid (counterparties left, activity right); single-column at 1000px.
+`.an-activity-table` / `.an-activity-header` / `.an-activity-row` — 5-column CSS grid table.
+
+---
+
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32.*
