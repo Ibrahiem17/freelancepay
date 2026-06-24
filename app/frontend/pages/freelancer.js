@@ -13,6 +13,7 @@ import SkeletonCard from "@/components/SkeletonCard";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 import { useAuthContext } from "@/pages/_app";
+import useSolPrice from "@/hooks/useSolPrice";
 
 const STATUS_DOWN = {
   ACTIVE: "active", SUBMITTED: "submitted", COMPLETED: "completed",
@@ -48,7 +49,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
+function EscrowCard({ escrow, onSubmitWork, onError, busy, solPrice }) {
   const [showForm, setShowForm]     = useState(false);
   const [note, setNote]             = useState("");
   const [file, setFile]             = useState(null);
@@ -57,6 +58,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   const sol    = (escrow.amount / LAMPORTS).toFixed(4);
   const parsed = parseSubmission(escrow.workSubmission);
   const canSubmit = escrow.status === "active" || escrow.status === "revisionRequested";
+  const usd   = solPrice ? `≈ $${(parseFloat(sol) * solPrice).toFixed(2)}` : null;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -93,7 +95,10 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
           <div className="card-title">{escrow.title}</div>
           <div style={{ marginTop: 6 }}><StatusBadge status={escrow.status} /></div>
         </div>
-        <div className="card-amount">{sol} SOL</div>
+        <div style={{ textAlign: "right" }}>
+          <div className="card-amount">{sol} SOL</div>
+          {usd && <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>{usd}</div>}
+        </div>
       </div>
 
       {escrow.description && (
@@ -238,6 +243,7 @@ export default function FreelancerPage() {
   const auth = useAuthContext();
   const user = auth?.user ?? null;
   const { submitWork } = useEscrow();
+  const solPrice = useSolPrice();
 
   const [escrows,  setEscrows]  = useState([]);
   const [loading,  setLoading]  = useState(false);
@@ -389,6 +395,7 @@ export default function FreelancerPage() {
                   onSubmitWork={handleSubmitWork}
                   onError={(msg) => setToast({ type: "error", text: msg })}
                   busy={loading}
+                  solPrice={solPrice}
                 />
               ))
             )}

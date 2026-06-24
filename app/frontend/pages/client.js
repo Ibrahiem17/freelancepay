@@ -13,6 +13,7 @@ import Toast from "@/components/Toast";
 import SkeletonCard from "@/components/SkeletonCard";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { parseSubmission } from "@/utils/ipfs";
+import useSolPrice from "@/hooks/useSolPrice";
 
 const STATUS_DOWN = {
   ACTIVE: "active", SUBMITTED: "submitted", COMPLETED: "completed",
@@ -48,13 +49,14 @@ function StatusBadge({ status }) {
   );
 }
 
-function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
+function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy, solPrice }) {
   const [showRevision, setShowRevision] = useState(false);
   const [revMsg, setRevMsg]             = useState("");
   const sol        = (escrow.amount / LAMPORTS).toFixed(4);
   const isActive    = escrow.status === "active";
   const isSubmitted = escrow.status === "submitted";
   const parsed      = parseSubmission(escrow.workSubmission);
+  const usd         = solPrice ? `≈ $${(parseFloat(sol) * solPrice).toFixed(2)}` : null;
 
   async function handleRevision(e) {
     e.preventDefault();
@@ -71,7 +73,10 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
           <div className="card-title">{escrow.title}</div>
           <div style={{ marginTop: 6 }}><StatusBadge status={escrow.status} /></div>
         </div>
-        <div className="card-amount">{sol} SOL</div>
+        <div style={{ textAlign: "right" }}>
+          <div className="card-amount">{sol} SOL</div>
+          {usd && <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>{usd}</div>}
+        </div>
       </div>
 
       {escrow.description && (
@@ -187,6 +192,7 @@ export default function ClientPage() {
   const { publicKey } = useWallet();
   const router = useRouter();
   const { createEscrow, approveWork, cancelEscrow, requestRevision } = useEscrow();
+  const solPrice = useSolPrice();
 
   const [form, setForm]       = useState({ title: "", description: "", freelancer: "", amount: "" });
 
@@ -329,6 +335,11 @@ export default function ClientPage() {
                 <div className="form-group" style={{ marginBottom: "1.25rem" }}>
                   <label className="form-label">Amount (SOL) *</label>
                   <input className="form-input" type="number" step="0.001" min="0.001" value={form.amount} onChange={field("amount")} placeholder="e.g. 0.5" required />
+                  {solPrice && form.amount && !isNaN(parseFloat(form.amount)) && (
+                    <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: "0.35rem" }}>
+                      ≈ ${(parseFloat(form.amount) * solPrice).toFixed(2)} USD &nbsp;·&nbsp; 1 SOL = ${solPrice.toLocaleString()} USD
+                    </div>
+                  )}
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: "100%" }}>
                   {loading
@@ -365,6 +376,7 @@ export default function ClientPage() {
                   onCancel={handleCancel}
                   onRequestRevision={handleRequestRevision}
                   busy={loading}
+                  solPrice={solPrice}
                 />
               ))
             )}
