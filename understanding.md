@@ -27,6 +27,7 @@
 19. [Layer 5 — The Database (PostgreSQL + Prisma)](#19-layer-5--the-database-postgresql--prisma)
 20. [Authentication — Wallet Sign-In (JWT)](#20-authentication--wallet-sign-in-jwt)
 21. [The Indexer — On-Chain Sync to PostgreSQL](#21-the-indexer--on-chain-sync-to-postgresql)
+22. [The REST API Layer](#22-the-rest-api-layer)
 
 ---
 
@@ -1325,7 +1326,7 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 **Devnet only.** The SOL used has no real monetary value. Switching to Solana mainnet requires a security audit of the program.
 
-**Notifications are created but not yet surfaced in the UI.** The indexer (`lib/indexer.js`) automatically writes `Notification` rows to PostgreSQL whenever an escrow status changes — work submitted, revision requested, payment released, etc. But no API route or UI component reads them yet. The freelancer/client still must manually refresh their dashboard to see changes. Wiring up a notification bell (polling `/api/notifications`) is a future task.
+**Notifications are served by the API but not yet surfaced in the UI.** The REST API (`/api/notifications`) returns all notifications for the authenticated user and supports mark-as-read. But no UI component (notification bell, dropdown) consumes it yet. Wiring up the notification bell to poll the endpoint is a future task.
 
 **File history lost on resubmission.** Each `submit_work` overwrites the previous `work_submission` on-chain. Round 1's delivery is gone when round 2 is submitted. No audit trail of previous submissions.
 
@@ -1981,6 +1982,184 @@ Result: { synced: 4, created: 4, updated: 0, statusChanges: 0 }
 
 ---
 
+## 22. The REST API Layer
+
+### Why a REST API?
+
+Before Phase 7, the only way to read escrow data was either to call the Solana RPC directly (slow, rate-limited) or to call Prisma inside a server component. The REST API is a stable HTTP contract that:
+
+- Decouples data access from Solana RPC — all responses come from PostgreSQL (fast, indexed)
+- Provides a fallback to Solana for escrows not yet indexed
+- Powers pagination, filtering, and aggregation that are impossible on-chain
+- Can be consumed by future mobile apps, external integrations, or third-party dashboards
+
+### The Shared Helper (`lib/api-helpers.js`)
+
+Four utilities used by every route:
+
+```js
+ok(res, data, status=200)   // JSON response with BigInt serializer (bigint → string automatically)
+err(res, message, status)   // { error: "message" } response
+requireAuth(req, res)       // reads fp_auth cookie → returns JWT payload or sends 401
+parsePagination(query)      // { limit: 1–100 (default 20), cursor: string|undefined }
+lamportsToSOL(lamports)     // BigInt|number → "0.5000" string (4 decimal places)
+```
+
+**BigInt serialization:** Prisma returns `amountLamports` as a JavaScript `BigInt`. `JSON.stringify` throws on BigInt by default. The `ok` function uses a replacer: `(_, v) => typeof v === 'bigint' ? v.toString() : v`. This converts every BigInt field to a string automatically — no per-route conversion needed.
+
+### The Endpoints
+
+#### `GET /api/escrows`
+
+Paginated escrow list from PostgreSQL. Public — no auth required.
+
+**Query params:**
+- `wallet` — filter by client or freelancer wallet address
+- `role` — `client` | `freelancer` — narrows `wallet` to one side; omit for both
+- `status` — `ACTIVE` | `SUBMITTED` | `COMPLETED` | `CANCELLED` | `REVISION_REQUESTED`
+- `limit` — 1–100 (default 20)
+- `cursor` — PDA of last item from previous page (cursor-based pagination)
+
+**Response:**
+```json
+{
+  "escrows": [{ "pda": "...", "status": "ACTIVE", "amountSOL": "0.5000", "client": {...}, "freelancer": {...} }],
+  "nextCursor": "Abc1...",
+  "total": 42
+}
+```
+
+Each escrow includes both user profiles (`walletAddress`, `displayName`, `avatarUrl`). `amountLamports` is present as a string; `amountSOL` is added for convenience.
+
+**Cursor pagination:** uses `pda` (unique string) as the cursor — stable and collision-free. The query uses `{ cursor: { pda }, skip: 1 }` to skip the cursor item itself.
+
+#### `GET /api/escrows/[pda]`
+
+Single escrow detail. Falls back to Solana RPC if the PDA is not yet indexed.
+
+**DB path (normal):** fetches from Prisma with both user profiles (full fields: `bio`, `skills`, `averageRating`, etc.) + the escrow's `Review` (if it exists). `workSubmission` is parsed from JSON: `{ note, file, name }`.
+
+**Chain fallback:** if `findUnique` returns null, tries `getProgram().account.escrowAccount.fetch(pda)`. If the account doesn't exist on-chain either, returns 404. The chain response includes `source: "chain"` and `client: null, freelancer: null` (profiles not available without DB).
+
+**Response:**
+```json
+{
+  "escrow": { "pda": "...", "workSubmission": { "note": "Done!", "file": "https://...", "name": "design.pdf" }, ... },
+  "client": { "walletAddress": "...", "displayName": "Alice", "bio": "...", "skills": ["react"] },
+  "freelancer": { ... },
+  "review": { "rating": 5, "comment": "Excellent work!" } | null
+}
+```
+
+#### `GET /api/users/[walletAddress]/escrows`
+
+All escrows for a given wallet, grouped by role. Public — no auth required.
+
+**Response:**
+```json
+{
+  "asClient":     [ ...escrows where clientWallet === walletAddress ],
+  "asFreelancer": [ ...escrows where freelancerWallet === walletAddress ],
+  "stats": {
+    "totalEarnedSOL":      "1.2500",
+    "totalSpentSOL":       "3.0000",
+    "activeCount":         2,
+    "pendingPaymentCount": 1
+  }
+}
+```
+
+**Stats calculation:**
+- `totalEarnedSOL` — sum of `amountLamports` for all `COMPLETED` escrows where the wallet is the freelancer
+- `totalSpentSOL` — sum for all `COMPLETED` escrows where the wallet is the client
+- `pendingPaymentCount` — `SUBMITTED` escrows as freelancer (work done, waiting on client approval)
+
+Sum uses BigInt arithmetic: `list.reduce((sum, e) => sum + e.amountLamports, 0n)` — no floating-point errors.
+
+#### `GET /api/notifications` (protected)
+
+Current user's last 50 notifications, newest first. Requires `fp_auth` cookie.
+
+**Response:**
+```json
+{
+  "notifications": [{ "id": "...", "type": "WORK_SUBMITTED", "title": "Work submitted", "message": "...", "read": false }],
+  "unreadCount": 3
+}
+```
+
+`unreadCount` is computed in-memory from the returned list (always accurate since the list is capped at 50 and unread should be far fewer).
+
+#### `POST /api/notifications/[id]/read` (protected)
+
+Marks a single notification as read. Verifies ownership: `notification.recipientWallet === auth.wallet`. Returns 403 if the notification belongs to a different user.
+
+**Response:** `{ "notification": { ...updated } }`
+
+#### `POST /api/notifications/read-all` (protected)
+
+Marks all unread notifications for the authenticated user as read via `updateMany`.
+
+**Response:** `{ "updated": 4 }` — count of rows updated.
+
+#### `GET /api/stats` (public, cached)
+
+Platform-wide aggregate statistics. Module-level cache with 5-minute TTL to avoid aggregating a large table on every request.
+
+**Response:**
+```json
+{
+  "totalEscrows":     5,
+  "totalCompleted":   2,
+  "totalVolumeSOL":   "1.2500",
+  "totalFreelancers": 1,
+  "totalClients":     1,
+  "totalJobPosts":    1
+}
+```
+
+**Caching:** `cachedStats` and `lastCacheTime` are module-level variables. Because Next.js runs API routes in the same Node.js process (in development and serverless contexts), the cached value survives across requests within the same process lifetime. In serverless Vercel, each cold start gets a fresh cache — acceptable since the stats are approximations.
+
+`totalVolumeSOL` uses `prisma.escrow.aggregate({ _sum: { amountLamports: true } })` — a single SQL `SUM()` call. The result is `BigInt | null` (null when no rows match), defaulting to `0n`.
+
+### File Structure Additions (Phase 7)
+
+```
+app/frontend/
+├── lib/
+│   └── api-helpers.js             ← ok/err/requireAuth/parsePagination/lamportsToSOL
+└── pages/api/
+    ├── escrows/
+    │   ├── index.js               ← GET /api/escrows (list + filters + pagination)
+    │   └── [pda].js               ← GET /api/escrows/:pda (detail + chain fallback)
+    ├── users/
+    │   └── [walletAddress]/
+    │       └── escrows.js         ← GET /api/users/:wallet/escrows (history + stats)
+    ├── notifications/
+    │   ├── index.js               ← GET /api/notifications (protected)
+    │   ├── read-all.js            ← POST /api/notifications/read-all (protected)
+    │   └── [id]/
+    │       └── read.js            ← POST /api/notifications/:id/read (protected)
+    └── stats/
+        └── index.js               ← GET /api/stats (public, 5-min cache)
+```
+
+### Verified Output
+
+```
+GET /api/escrows                → 200 { escrows: [5 records], nextCursor: null, total: 5 }
+GET /api/escrows?status=ACTIVE  → 200 { total: 5 }
+GET /api/escrows?role=client&wallet=HbkH... → 200 { total: 1 }
+GET /api/escrows?status=BOGUS   → 400 { error: "Invalid status value" }
+GET /api/escrows/ActiveEscrowPDA... → 200 { escrow: { pda, status: "ACTIVE", amountSOL: "0.5000" }, ... }
+GET /api/escrows/notfoundPDA... → 404 { error: "Escrow not found" }
+GET /api/users/HbkH.../escrows  → 200 { asClient: [1 escrow], stats: { activeCount: 1 } }
+GET /api/notifications (no cookie) → 401 { error: "Unauthorized" }
+GET /api/stats                  → 200 { totalEscrows: 5, totalFreelancers: 1, totalClients: 1 }
+```
+
+---
+
 ## Summary
 
 FreelancePay is built in five layers with a cryptographic auth system on top:
@@ -1999,10 +2178,12 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **The Indexer:** A cron job (`/api/cron/sync-escrows`, every minute on Vercel) reads all `EscrowAccount` data from Solana via a read-only Anchor provider and upserts it into the PostgreSQL `Escrow` table. When it detects a status change, it writes a `Notification` row for the affected party. Run manually with `node scripts/run-indexer.js`.
 
+**The REST API:** Seven endpoint groups (`/api/escrows`, `/api/escrows/[pda]`, `/api/users/[wallet]/escrows`, `/api/notifications`, `/api/notifications/[id]/read`, `/api/notifications/read-all`, `/api/stats`) serve PostgreSQL data over HTTP. All endpoints share a helper (`lib/api-helpers.js`) that handles BigInt serialization, auth gating, pagination parsing, and SOL conversion. Stats are module-level cached for 5 minutes. Notification routes are protected by the `fp_auth` JWT cookie.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache.*
