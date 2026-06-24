@@ -79,6 +79,7 @@ export default function Navbar() {
           <Link href="/freelancer"   style={linkStyle("/freelancer")}>Freelancer</Link>
           <Link href="/marketplace"  style={linkStyle("/marketplace")}>Marketplace</Link>
           <Link href="/jobs"         style={linkStyle("/jobs")}>Jobs</Link>
+          {user && <Link href="/analytics" style={linkStyle("/analytics")}>Analytics</Link>}
           <span className="devnet-badge">DEVNET</span>
 
           {user && (
