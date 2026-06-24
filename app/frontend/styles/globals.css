@@ -1347,3 +1347,151 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   .jobs-sidebar { flex-direction: column; }
   .mp-filters-bar .mp-filter-row { flex-direction: column; align-items: flex-start; }
 }
+
+/* ── 30. Reviews ─────────────────────────────────── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-6px); }
+  40%       { transform: translateX(6px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
+}
+.review-shake {
+  animation: shake 0.4s var(--ease-out);
+}
+
+.review-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.review-client-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.review-client-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.review-time {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.review-comment {
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.65;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* ── 31. Profile page ────────────────────────────── */
+.profile-header { padding: 1.5rem; }
+
+.profile-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.profile-identity {
+  flex: 1;
+  min-width: 160px;
+}
+
+.profile-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px dashed var(--line);
+}
+.profile-stat {}
+.profile-stat-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+.profile-stat-label {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.reviews-agg {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.reviews-agg-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+}
+.reviews-agg-score {
+  font-size: 3rem;
+  font-weight: 800;
+  font-family: var(--font-display);
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.reviews-agg-dist {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.reviews-dist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.reviews-dist-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.reviews-dist-track {
+  flex: 1;
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.reviews-dist-bar {
+  height: 100%;
+  background: var(--amber);
+  border-radius: 4px;
+  transition: width 0.4s var(--ease-out);
+}
+.reviews-dist-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  width: 20px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+@media (max-width: 580px) {
+  .profile-top { flex-direction: column; align-items: flex-start; }
+  .reviews-agg { flex-direction: column; gap: 1rem; }
+}

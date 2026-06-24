@@ -10,6 +10,7 @@ const WalletMultiButton = dynamic(
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
+import StarRating from "@/components/StarRating";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
@@ -33,6 +34,110 @@ function StatusBadge({ status }) {
 
 const TIMELINE = ["active", "submitted", "completed"];
 
+// ── Inline review components ──────────────────────────────────────────────────
+
+function ReviewForm({ escrowPda, onSuccess }) {
+  const [rating,     setRating]     = useState(0);
+  const [comment,    setComment]    = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error,      setError]      = useState("");
+  const [shakeKey,   setShakeKey]   = useState(0);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (!rating) {
+      setShakeKey((k) => k + 1);
+      setError("Please select a rating before submitting.");
+      return;
+    }
+    if (comment.trim().length < 10) {
+      setError("Comment must be at least 10 characters.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reviews", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ escrowPda, rating, comment: comment.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to submit review.");
+      } else {
+        onSuccess(data.review);
+      }
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="card" data-reveal="pop" style={{ marginBottom: "1rem", border: "3px dashed var(--lav)" }}>
+      <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem", fontFamily: "var(--font-display)" }}>
+        Leave a Review
+      </h2>
+      <p style={{ fontSize: "0.87rem", color: "var(--ink-soft)", marginBottom: "1.25rem", fontWeight: 600 }}>
+        How was your experience working with this freelancer?
+      </p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">Rating *</label>
+          <div key={shakeKey} className={shakeKey ? "review-shake" : ""} style={{ paddingBottom: 4 }}>
+            <StarRating value={rating} size="lg" interactive onChange={setRating} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Comment *</label>
+          <textarea
+            className="form-textarea"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Describe your experience — was work delivered on time? Quality of communication? Would you hire again?"
+            maxLength={500}
+            rows={4}
+            required
+          />
+          <div className="form-hint">{comment.length}/500</div>
+        </div>
+        {error && (
+          <div className="alert alert-error" style={{ marginBottom: "0.75rem" }}>{error}</div>
+        )}
+        <button className="btn btn-primary" type="submit" disabled={submitting || !rating}>
+          {submitting
+            ? <><span className="spinner" /> Submitting…</>
+            : "Submit Review"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function ExistingReviewCard({ review }) {
+  return (
+    <div className="card" data-reveal style={{ marginBottom: "1rem", border: "3px dashed var(--sage)" }}>
+      <h2 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem", fontFamily: "var(--font-display)", color: "var(--leaf)" }}>
+        Your Review
+      </h2>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+        <StarRating value={review.rating} size="md" />
+        <span style={{ fontWeight: 700, color: "var(--ink)", fontSize: "1rem" }}>{review.rating}/5</span>
+      </div>
+      <p style={{ fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.65, fontWeight: 600 }}>
+        {review.comment}
+      </p>
+      <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)", marginTop: "0.5rem", fontWeight: 600 }}>
+        Submitted {new Date(review.createdAt).toLocaleDateString()}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function EscrowDetailPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -48,6 +153,11 @@ export default function EscrowDetailPage() {
   const submitFileRef                   = useRef(null);
   const [showRevision, setShowRevision] = useState(false);
   const [revMsg, setRevMsg]             = useState("");
+
+  // Review state — loaded from DB endpoint (on-chain data has no review field)
+  const [review,       setReview]       = useState(null);
+  const [reviewLoaded, setReviewLoaded] = useState(false);
+
   const clearToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
@@ -57,6 +167,18 @@ export default function EscrowDetailPage() {
   }, [id, publicKey, fetchEscrowByPDA]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Fetch review from DB when escrow is completed
+  useEffect(() => {
+    if (!id || !escrow || escrow.status !== "completed") return;
+    fetch(`/api/escrows/${id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setReview(data.review || null);
+        setReviewLoaded(true);
+      })
+      .catch(() => setReviewLoaded(true));
+  }, [id, escrow?.status]);
 
   async function handleApprove() {
     setLoading(true);
@@ -431,7 +553,7 @@ export default function EscrowDetailPage() {
               <div
                 className="card"
                 data-reveal="pop"
-                style={{ border: "3px dashed var(--leaf)", textAlign: "center", padding: "2.5rem", background: "var(--sage-lo)" }}
+                style={{ border: "3px dashed var(--leaf)", textAlign: "center", padding: "2.5rem", background: "var(--sage-lo)", marginBottom: "1rem" }}
               >
                 <div className="icon-badge icon-badge--paid" style={{ margin: "0 auto 1rem" }}>
                   <Zap size={22} strokeWidth={2.2} aria-hidden />
@@ -443,6 +565,13 @@ export default function EscrowDetailPage() {
                   Payment was released to the freelancer&apos;s wallet.
                 </p>
               </div>
+            )}
+
+            {/* ── Review section (client only, after completion) ── */}
+            {escrow.status === "completed" && isClient && reviewLoaded && (
+              review
+                ? <ExistingReviewCard review={review} />
+                : <ReviewForm escrowPda={escrow.pda} onSuccess={setReview} />
             )}
           </>
         )}
