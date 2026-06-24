@@ -26,6 +26,7 @@
 18. [Developer Scripts — Setup, Airdrop, Tests](#18-developer-scripts--setup-airdrop-tests)
 19. [Layer 5 — The Database (PostgreSQL + Prisma)](#19-layer-5--the-database-postgresql--prisma)
 20. [Authentication — Wallet Sign-In (JWT)](#20-authentication--wallet-sign-in-jwt)
+21. [The Indexer — On-Chain Sync to PostgreSQL](#21-the-indexer--on-chain-sync-to-postgresql)
 
 ---
 
@@ -335,16 +336,22 @@ app/frontend/
 │   ├── verify.js        ← POST { wallet, signatureBase58, nonce } → sets JWT cookie
 │   ├── me.js            ← GET → returns current user or 401
 │   └── logout.js        ← POST → clears JWT cookie
+├── pages/api/cron/
+│   └── sync-escrows.js  ← GET (Bearer auth) → runs indexer, returns sync stats
 ├── hooks/
 │   └── useAuth.js       ← auth state hook (signIn, signOut, user, isAuthenticated)
 ├── lib/
 │   ├── prisma.js        ← Prisma singleton client
 │   ├── auth.js          ← generateJWT, verifyJWT, setCookie, clearCookie
-│   └── cache.js         ← nonce store (single-use, 5 min TTL) + rate limiter
-├── scripts/             ← developer tools (Phase 1 & 2)
+│   ├── cache.js         ← nonce store (single-use, 5 min TTL) + rate limiter
+│   ├── solana-reader.js ← read-only Anchor provider, fetchAllEscrows(), parseStatus()
+│   └── indexer.js       ← syncEscrows() — upsert loop + notification creation
+├── scripts/             ← developer tools
 │   ├── verify-setup.js  ← 8-check environment verifier (run before dev)
 │   ├── airdrop-devnet.js ← CLI tool to request Devnet test SOL
-│   └── test-program.js  ← end-to-end integration tests against Devnet
+│   ├── test-program.js  ← end-to-end integration tests against Devnet
+│   └── run-indexer.js   ← manual indexer run (node scripts/run-indexer.js)
+├── vercel.json          ← Vercel cron config (every-minute sync-escrows)
 ├── src/hooks/
 │   └── useEscrow.js     ← ALL blockchain calls live here
 ├── src/idl/
@@ -1318,7 +1325,7 @@ Every action ends with `setToast({ type: "success" | "error", text: "..." })`. T
 
 **Devnet only.** The SOL used has no real monetary value. Switching to Solana mainnet requires a security audit of the program.
 
-**No real-time notifications yet.** The `Notification` table exists in PostgreSQL and is seeded with test data, but no API routes or UI yet consume it. When the client requests a revision, the freelancer still has no way of knowing without refreshing. Wiring up the notification feed (polling `/api/notifications`) is a Phase 4 task.
+**Notifications are created but not yet surfaced in the UI.** The indexer (`lib/indexer.js`) automatically writes `Notification` rows to PostgreSQL whenever an escrow status changes — work submitted, revision requested, payment released, etc. But no API route or UI component reads them yet. The freelancer/client still must manually refresh their dashboard to see changes. Wiring up a notification bell (polling `/api/notifications`) is a future task.
 
 **File history lost on resubmission.** Each `submit_work` overwrites the previous `work_submission` on-chain. Round 1's delivery is gone when round 2 is submitted. No audit trail of previous submissions.
 
@@ -1850,6 +1857,130 @@ app/frontend/
 
 ---
 
+## 21. The Indexer — On-Chain Sync to PostgreSQL
+
+### The Problem It Solves
+
+Solana is the source of truth. But querying it from Next.js API routes on every request is slow (RPC round-trips) and expensive (rate-limited on free tiers). The indexer bridges the gap: it reads all escrow accounts from Solana and writes their current state into PostgreSQL, where any API route can query them instantly with SQL.
+
+A second benefit: the indexer is the only component that can detect **state transitions** (e.g., status changed from `ACTIVE` to `SUBMITTED`). When it detects one, it writes a `Notification` row — something the frontend alone could never do reliably, because it only sees the current state at the moment the page loads.
+
+### How It Runs
+
+**Manual (development):**
+```sh
+cd app/frontend
+node scripts/run-indexer.js
+```
+
+**Automatic (production — Vercel Cron):**
+`vercel.json` schedules `GET /api/cron/sync-escrows` every minute. Vercel calls this endpoint automatically. The endpoint requires `Authorization: Bearer {CRON_SECRET}` — Vercel sets this automatically; anyone else gets 401.
+
+> **Note:** Vercel Crons require the Pro plan. On the free tier, use [cron-job.org](https://cron-job.org) to call the endpoint externally with the `Authorization` header set manually.
+
+### The Files
+
+#### `lib/solana-reader.js` — Read-Only Anchor Client
+
+```js
+getReadonlyProvider()  // AnchorProvider with a dummy Keypair — never signs
+getProgram()           // Anchor Program instance from IDL
+fetchAllEscrows()      // program.account.escrowAccount.all() → normalized array
+parseStatus(obj)       // { active: {} } → "ACTIVE", { revisionRequested: {} } → "REVISION_REQUESTED"
+```
+
+**The dummy wallet pattern:** `AnchorProvider` requires a wallet object with `publicKey`, `signTransaction`, and `signAllTransactions`. Since the indexer only reads, a freshly-generated `Keypair` satisfies the interface but its sign methods are stubs — they are never invoked.
+
+**`parseStatus()` mapping:**
+
+| Anchor object | DB enum string |
+|---|---|
+| `{ active: {} }` | `"ACTIVE"` |
+| `{ submitted: {} }` | `"SUBMITTED"` |
+| `{ completed: {} }` | `"COMPLETED"` |
+| `{ cancelled: {} }` | `"CANCELLED"` |
+| `{ revisionRequested: {} }` | `"REVISION_REQUESTED"` |
+
+#### `lib/indexer.js` — Sync Loop
+
+`syncEscrows()` runs the following algorithm for every on-chain escrow:
+
+```
+for each on-chain escrow:
+  1. ensureUser(clientWallet)      ← upsert User if not exists (avoids FK violation)
+  2. ensureUser(freelancerWallet)  ← same
+  3. findUnique({ pda })           ← check if we've seen this escrow before
+  4a. if NEW  → prisma.escrow.create(all fields)
+  4b. if EXISTING:
+        compare oldStatus vs newStatus
+        prisma.escrow.update(status, workSubmission, revisionNote, lastSyncedAt)
+        if status changed → createStatusChangeNotification(...)
+  5. log and return { synced, created, updated, statusChanges }
+```
+
+**Why `ensureUser` before every write:** The `Escrow` table has FK constraints on `clientWallet` and `freelancerWallet` → `User.walletAddress`. If the wallet has never signed in, no `User` row exists yet. `ensureUser` calls `prisma.user.upsert({ create: { walletAddress }, update: {} })` to create a minimal record and satisfy the constraint.
+
+**Critical type conversions:**
+
+| Anchor type | JS value from library | Conversion for Prisma |
+|---|---|---|
+| `u64` amount | `BN` object | `BigInt(account.amount.toString())` |
+| `i64` createdAt | `BN` (Unix seconds) | `new Date(Number(account.createdAt.toString()) * 1000)` |
+| `string` workSubmission | `""` when empty | `account.workSubmission?.trim() \|\| null` |
+
+**Notification creation — 5 tracked transitions:**
+
+| Transition | Recipient | Notification type | Message |
+|---|---|---|---|
+| `ACTIVE → SUBMITTED` | Client | `WORK_SUBMITTED` | "{freelancer} submitted work for "{title}"" |
+| `SUBMITTED → REVISION_REQUESTED` | Freelancer | `REVISION_REQUESTED` | "Your client requested changes on "{title}"" |
+| `SUBMITTED → COMPLETED` | Freelancer | `PAYMENT_RELEASED` | "You received {X} SOL for "{title}"" |
+| `ACTIVE → CANCELLED` | Freelancer | `ESCROW_CANCELLED` | "The contract "{title}" was cancelled by the client" |
+| `REVISION_REQUESTED → SUBMITTED` | Client | `WORK_SUBMITTED` | "{freelancer} resubmitted work for "{title}" after revisions" |
+
+`freelancerName` is resolved from the `User` table. If no `displayName` is set, it falls back to a truncated wallet: `"HbkHJY...K1Tf"`.
+
+#### `pages/api/cron/sync-escrows.js` — HTTP Trigger
+
+```
+GET /api/cron/sync-escrows
+Authorization: Bearer {CRON_SECRET}
+→ 200 { success: true, result: { synced, created, updated, statusChanges } }
+→ 401 { error: "Unauthorized" }
+→ 500 { success: false, error: "..." }
+```
+
+#### `scripts/run-indexer.js` — Manual CLI
+
+Loads `.env.local`, calls `syncEscrows()`, prints result, disconnects Prisma, exits. Idempotent — safe to run any number of times.
+
+#### `vercel.json` — Cron Schedule
+
+```json
+{
+  "framework": "nextjs",
+  "crons": [{ "path": "/api/cron/sync-escrows", "schedule": "* * * * *" }]
+}
+```
+
+`* * * * *` = every minute.
+
+### Known Gap: Closed Accounts
+
+When `approve_work` or `cancel_escrow` runs on-chain, the escrow account is **deleted from Solana** (rent reclaimed). If the indexer runs after the account is gone, it won't see it. Mitigated by running the indexer frequently. A production fix would subscribe to program logs via `onLogs` and capture the final state in the same transaction.
+
+### Verified Output
+
+```
+FreelancePay Indexer — manual run
+
+Synced 4 escrows — 4 new, 0 updated, 0 status changes
+
+Result: { synced: 4, created: 4, updated: 0, statusChanges: 0 }
+```
+
+---
+
 ## Summary
 
 FreelancePay is built in five layers with a cryptographic auth system on top:
@@ -1866,10 +1997,12 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 
 **Auth:** Users sign in by signing a challenge message with their Phantom wallet (ed25519). The server verifies the signature, upserts a `User` row in PostgreSQL, and issues an httpOnly JWT cookie (`fp_auth`). No password exists — wallet ownership is identity. The `useAuth` hook auto-triggers sign-in the moment a wallet connects and auto-signs-out when it disconnects.
 
+**The Indexer:** A cron job (`/api/cron/sync-escrows`, every minute on Vercel) reads all `EscrowAccount` data from Solana via a read-only Anchor provider and upserts it into the PostgreSQL `Escrow` table. When it detects a status change, it writes a `Notification` row for the affected party. Run manually with `node scripts/run-indexer.js`.
+
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
 ---
 
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`.*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config.*
