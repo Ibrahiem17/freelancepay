@@ -29,6 +29,7 @@
 21. [The Indexer — On-Chain Sync to PostgreSQL](#21-the-indexer--on-chain-sync-to-postgresql)
 22. [The REST API Layer](#22-the-rest-api-layer)
 23. [Real-Time Notifications (Server-Sent Events)](#23-real-time-notifications-server-sent-events)
+24. [Email Notifications (Resend)](#24-email-notifications-resend)
 
 ---
 
@@ -2365,6 +2366,130 @@ For local development and small-scale single-server deployments, the current imp
 
 ---
 
+## 24. Email Notifications (Resend)
+
+### Overview
+
+When an escrow event occurs (work submitted, revision requested, payment released, etc.) the indexer not only writes to the DB and fires an SSE push — it also sends a transactional email to the affected party. Emails are sent via [Resend](https://resend.com), a developer-first email API. All email logic lives in two files: `lib/emailTemplates.js` (HTML generation) and `lib/email.js` (recipient resolution + delivery).
+
+### Architecture
+
+```
+Indexer (lib/indexer.js)
+    │
+    ├─► DB write (prisma.notification.create)
+    ├─► SSE push (emitNotification)
+    └─► Email send (sendWorkSubmittedEmail / sendRevisionRequestedEmail / ...)
+            │
+            ▼
+        lib/email.js
+            ├─ getEmailRecipient(wallet)  ← checks emailNotificationsEnabled
+            ├─ getDisplayName(wallet)
+            ├─ build template (lib/emailTemplates.js)
+            ├─ injectWallet(html, wallet)  ← patches unsubscribe URL
+            └─ sendEmail({ to, subject, html })  ← calls Resend API
+```
+
+### Email Templates (`lib/emailTemplates.js`)
+
+Five HTML email templates, one per event type. **All CSS is inline** (email clients like Gmail and Outlook strip `<style>` blocks). Each template is a function that returns `{ subject, html }`.
+
+| Template function | Triggered by | Recipient |
+|---|---|---|
+| `workSubmittedTemplate` | `ACTIVE→SUBMITTED`, `REVISION_REQUESTED→SUBMITTED` | Client |
+| `revisionRequestedTemplate` | `SUBMITTED→REVISION_REQUESTED` | Freelancer |
+| `paymentReleasedTemplate` | `SUBMITTED→COMPLETED` | Freelancer |
+| `escrowCreatedTemplate` | New escrow first indexed | Freelancer |
+| `escrowCancelledTemplate` | `ACTIVE→CANCELLED` | Freelancer |
+
+Shared utilities:
+- **`baseTemplate({ title, previewText, bodyHTML, wallet })`** — generates the outer shell: FreelancePay header logo, card container, footer with unsubscribe link. Computes the unsubscribe URL: `sha256(wallet + JWT_SECRET)` encoded as `base64url`.
+- **`escHtml(str)`** — HTML-escapes strings before inserting into templates.
+- **`ctaButton(text, url, bgColor)`** — renders a table-based CTA button (required for Outlook compatibility; `<a>` styled buttons break in Outlook).
+
+All templates call `baseTemplate` with `wallet: ""` as a placeholder — the actual wallet is not known inside the template layer. `email.js` patches the correct wallet after template generation via `injectWallet()`.
+
+### Sender Logic (`lib/email.js`)
+
+**Sender address:**
+- Dev (no `NEXT_PUBLIC_APP_DOMAIN`): `FreelancePay <onboarding@resend.dev>` — Resend's sandbox sender, no DNS verification needed.
+- Prod: `FreelancePay <noreply@{NEXT_PUBLIC_APP_DOMAIN}>` — requires domain verification in the Resend dashboard.
+
+**`getEmailRecipient(walletAddress)`** — queries the DB for the user's `email`, `displayName`, and `emailNotificationsEnabled`. Returns `null` if:
+- No email set on the account
+- `emailNotificationsEnabled = false`
+
+If `null` is returned, the send function exits early with `{ success: false, reason: "no_email" }`. No email is attempted.
+
+**`injectWallet(html, walletAddress)`** — patches the placeholder `wallet=` parameter in the already-rendered HTML to the real wallet address + computed token. Uses a regex replacement so the template layer stays stateless.
+
+**`sendEmail({ to, subject, html })`** — core wrapper: calls `getResend()` (lazy init, throws if `RESEND_API_KEY` not set), calls `resend.emails.send()`, logs success with `console.log`, returns `{ success, id }` or `{ success: false, error }`.
+
+All five `send*Email` functions share the same structure:
+1. `getEmailRecipient(wallet)` → null check
+2. `getDisplayName(counterparty wallet)` — for personalized greeting
+3. Build template
+4. `sendEmail({ to, subject, html: injectWallet(html, wallet) })`
+5. Log on success; outer try/catch in indexer swallows failures
+
+### Unsubscribe Endpoint (`pages/api/email/unsubscribe.js`)
+
+`GET /api/email/unsubscribe?wallet=<addr>&token=<base64url>`
+
+Public — no authentication required. Token is `sha256(wallet + JWT_SECRET)` encoded as `base64url`. This is deterministic and never expires; changing `JWT_SECRET` invalidates all existing unsubscribe links.
+
+Flow:
+1. Validate `wallet` + `token` query params present
+2. Compute expected token — compare with `===` (constant-time not required since this is a write-only unsubscribe, not a secret)
+3. On mismatch: return 400 HTML error page
+4. `prisma.user.update({ emailNotificationsEnabled: false })` — wrapped in try/catch (user row may not exist)
+5. Return 200 HTML confirmation page
+
+The page is styled to match the FreelancePay visual identity (warm beige, Georgia serif headers, round card) with a "← Back to FreelancePay" link.
+
+### Test Endpoint (`pages/api/test-email.js`)
+
+`POST /api/test-email` — DEV only. Returns 404 if `NODE_ENV !== "development"`.
+
+Body: `{ type, to }` — where `type` is one of `work_submitted`, `revision_requested`, `payment_released`, `escrow_created`, `escrow_cancelled`.
+
+Bypasses the DB recipient check — calls template functions directly with sample data and sends to the `to` address via `sendEmail`. The unsubscribe URL is patched using `to` as a stand-in wallet. Useful for:
+- Verifying `RESEND_API_KEY` is working
+- Checking email rendering in Gmail/Outlook
+- Testing all 5 template types before a real escrow event occurs
+
+```sh
+# Example: send a test "payment released" email
+curl -X POST http://localhost:3000/api/test-email \
+  -H "Content-Type: application/json" \
+  -d '{"type":"payment_released","to":"you@example.com"}'
+```
+
+### Environment Setup
+
+Add to `app/frontend/.env.local`:
+```
+RESEND_API_KEY=re_xxxx   # from https://resend.com → Dashboard → API Keys
+```
+
+For production on Vercel: add `RESEND_API_KEY` and optionally `NEXT_PUBLIC_APP_DOMAIN` to Vercel environment variables. The domain must be verified in Resend's dashboard to use a custom `From` address.
+
+### File Map
+
+```
+app/frontend/
+├── lib/
+│   ├── emailTemplates.js    ← 5 HTML templates, baseTemplate, escHtml, ctaButton
+│   ├── email.js             ← Resend sender, getEmailRecipient, injectWallet, 5 send* functions
+│   └── indexer.js           ← updated: email dispatch after SSE block + sendEscrowCreatedEmail on new escrow
+└── pages/api/
+    ├── email/
+    │   └── unsubscribe.js   ← GET; verify token; set emailNotificationsEnabled=false; return HTML
+    └── test-email.js        ← POST; DEV only; bypasses DB; sends sample email to given address
+```
+
+---
+
 ## Summary
 
 FreelancePay is built in five layers with a cryptographic auth system on top:
@@ -2386,6 +2511,8 @@ FreelancePay is built in five layers with a cryptographic auth system on top:
 **The REST API:** Seven endpoint groups (`/api/escrows`, `/api/escrows/[pda]`, `/api/users/[wallet]/escrows`, `/api/notifications`, `/api/notifications/[id]/read`, `/api/notifications/read-all`, `/api/stats`) serve PostgreSQL data over HTTP. All endpoints share a helper (`lib/api-helpers.js`) that handles BigInt serialization, auth gating, pagination parsing, and SOL conversion. Stats are module-level cached for 5 minutes. Notification routes are protected by the `fp_auth` JWT cookie.
 
 **Real-Time Notifications:** An `EventEmitter` singleton (`lib/eventBus.js`) receives events from the indexer immediately after each `Notification` DB write. The SSE endpoint (`/api/sse/notifications`) keeps a long-lived HTTP connection open per authenticated user, streams events as `data: {...}\n\n` messages, and sends a 25-second keepalive comment. The `useNotifications` hook opens an `EventSource`, handles the initial state from `/api/notifications`, and auto-reconnects with exponential backoff. The Navbar bell shows a live badge and 5-item dropdown; the `/notifications` page shows the full history with tab filters.
+
+**Email Notifications:** Transactional emails are sent via Resend for every escrow event. `lib/emailTemplates.js` contains five table-layout HTML email templates with inline CSS (required for Outlook/Gmail). `lib/email.js` resolves the recipient from the DB (checking `emailNotificationsEnabled`), injects the correct unsubscribe URL, and calls the Resend API. `/api/email/unsubscribe` is a public endpoint that verifies a `sha256(wallet + JWT_SECRET)` token and sets `emailNotificationsEnabled = false`, returning a styled HTML confirmation. `/api/test-email` (dev only) lets developers test all five email types without real escrow events.
 
 The key insight is that **trust is replaced by code**. Neither the client nor the freelancer needs to trust each other — they both trust the Rust program, which is public, auditable, and impossible to tamper with. The website and its design are a friendly, approachable layer on top of that trustless foundation.
 
