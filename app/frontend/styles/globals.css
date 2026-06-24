@@ -1579,3 +1579,209 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   .an-activity-header { display: none; }
   .an-activity-row { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
 }
+
+/* ── Section 33 — Phase 13: Navbar right, user dropdown, skeleton, earnings ── */
+
+/* Navbar right column */
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+
+/* Hamburger — hidden by default, shown on mobile */
+.navbar-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+/* Mobile menu */
+.navbar-mobile-menu {
+  position: fixed;
+  top: var(--navbar-h, 56px);
+  left: 0;
+  right: 0;
+  background: var(--paper);
+  border-bottom: 2.5px solid var(--line);
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+.mobile-nav-link {
+  display: block;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.mobile-nav-link:hover { background: var(--surface); }
+.mobile-nav-link--danger { color: var(--red); }
+.mobile-nav-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0.4rem 0;
+}
+
+/* User avatar button */
+.user-avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 2.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.3rem 0.65rem 0.3rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+  transition: border-color 0.15s;
+}
+.user-avatar-btn:hover { border-color: var(--purple); }
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.user-avatar--lg {
+  width: 36px;
+  height: 36px;
+  font-size: 1rem;
+}
+.user-wallet-trunc {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+/* User dropdown */
+.user-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 210px;
+  background: var(--paper);
+  border: 2.5px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+  z-index: 1000;
+  overflow: hidden;
+}
+.user-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+}
+.user-dropdown-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0;
+}
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.user-dropdown-item:hover { background: var(--surface); }
+.user-dropdown-item--danger { color: var(--red); }
+.user-dropdown-item--danger:hover { background: #fef2f2; }
+
+/* Skeleton card shimmer */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton-card {
+  background: var(--paper);
+  border: 2.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.skeleton-line {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface) 25%, var(--line) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  margin-bottom: 0.75rem;
+  width: 100%;
+}
+.skeleton-line--title {
+  height: 20px;
+  width: 60%;
+  margin-bottom: 1rem;
+}
+.skeleton-line--short { width: 40%; margin-bottom: 0; }
+
+/* Freelancer earnings strip */
+.fl-earnings-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: var(--sage-lo, #f0fdf4);
+  border: 2.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+.fl-earn-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+.fl-earn-value {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--leaf, #16a34a);
+  font-family: var(--font-display);
+}
+
+/* Mobile overrides */
+@media (max-width: 768px) {
+  .navbar-links { display: none; }
+  .navbar-hamburger { display: flex; }
+  .user-wallet-trunc { display: none; }
+}

@@ -14,6 +14,32 @@ import StarRating from "@/components/StarRating";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
 
+const SYNC_DELAY = 2500;
+
+const STATUS_DOWN = {
+  ACTIVE: "active", SUBMITTED: "submitted", COMPLETED: "completed",
+  CANCELLED: "cancelled", REVISION_REQUESTED: "revisionRequested",
+};
+
+function normalizeApiEscrow(data) {
+  const e  = data.escrow;
+  const ws = e.workSubmission;
+  return {
+    pda:           e.pda,
+    client:        e.clientWallet,
+    freelancer:    e.freelancerWallet,
+    amount:        Number(e.amountLamports),
+    title:         e.title,
+    description:   e.description,
+    workSubmission: ws && typeof ws === "object"
+      ? JSON.stringify(ws)
+      : (ws || ""),
+    revisionNote:  e.revisionNote || "",
+    status:        STATUS_DOWN[e.status] || "active",
+    createdAt:     Math.floor(new Date(e.onChainCreatedAt).getTime() / 1000),
+  };
+}
+
 const LAMPORTS = 1_000_000_000;
 
 const STATUS_LABELS = {
@@ -142,10 +168,11 @@ export default function EscrowDetailPage() {
   const router = useRouter();
   const { id } = router.query;
   const { publicKey } = useWallet();
-  const { fetchEscrowByPDA, approveWork, cancelEscrow, submitWork, requestRevision } = useEscrow();
+  const { approveWork, cancelEscrow, submitWork, requestRevision } = useEscrow();
 
   const [escrow, setEscrow]             = useState(null);
   const [loading, setLoading]           = useState(false);
+  const [syncing, setSyncing]           = useState(false);
   const [toast, setToast]               = useState(null);
   const [submitNote, setSubmitNote]     = useState("");
   const [submitFile, setSubmitFile]     = useState(null);
@@ -153,39 +180,41 @@ export default function EscrowDetailPage() {
   const submitFileRef                   = useRef(null);
   const [showRevision, setShowRevision] = useState(false);
   const [revMsg, setRevMsg]             = useState("");
-
-  // Review state — loaded from DB endpoint (on-chain data has no review field)
   const [review,       setReview]       = useState(null);
   const [reviewLoaded, setReviewLoaded] = useState(false);
 
   const clearToast = useCallback(() => setToast(null), []);
 
+  // Load escrow + review from DB API (fast path); falls back to chain if not indexed yet
   const reload = useCallback(async () => {
-    if (!id || !publicKey) return;
-    const data = await fetchEscrowByPDA(id);
-    setEscrow(data);
-  }, [id, publicKey, fetchEscrowByPDA]);
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/escrows/${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setEscrow(normalizeApiEscrow(data));
+      setReview(data.review || null);
+      setReviewLoaded(true);
+    } catch {
+      // silently fail — page shows "loading" state
+    }
+  }, [id]);
 
   useEffect(() => { reload(); }, [reload]);
 
-  // Fetch review from DB when escrow is completed
-  useEffect(() => {
-    if (!id || !escrow || escrow.status !== "completed") return;
-    fetch(`/api/escrows/${id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setReview(data.review || null);
-        setReviewLoaded(true);
-      })
-      .catch(() => setReviewLoaded(true));
-  }, [id, escrow?.status]);
+  async function syncAfter(msg, signature) {
+    setToast({ type: "success", text: msg, signature });
+    setSyncing(true);
+    await new Promise((r) => setTimeout(r, SYNC_DELAY));
+    await reload();
+    setSyncing(false);
+  }
 
   async function handleApprove() {
     setLoading(true);
     const r = await approveWork(escrow.pda, escrow.freelancer);
     if (r.success) {
-      setToast({ type: "success", text: "Work approved! SOL sent to freelancer.", signature: r.signature });
-      await reload();
+      await syncAfter("Work approved! SOL sent to freelancer.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -196,8 +225,7 @@ export default function EscrowDetailPage() {
     setLoading(true);
     const r = await cancelEscrow(escrow.pda);
     if (r.success) {
-      setToast({ type: "success", text: "Escrow cancelled. SOL refunded.", signature: r.signature });
-      await reload();
+      await syncAfter("Escrow cancelled. SOL refunded.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -210,10 +238,9 @@ export default function EscrowDetailPage() {
     setLoading(true);
     const r = await requestRevision(escrow.pda, revMsg.trim());
     if (r.success) {
-      setToast({ type: "success", text: "Revision requested. The freelancer can see your feedback.", signature: r.signature });
       setRevMsg("");
       setShowRevision(false);
-      await reload();
+      await syncAfter("Revision requested. The freelancer can see your feedback.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -247,11 +274,10 @@ export default function EscrowDetailPage() {
 
     const r = await submitWork(escrow.pda, encoded);
     if (r.success) {
-      setToast({ type: "success", text: "Work submitted on-chain!", signature: r.signature });
       setSubmitNote("");
       setSubmitFile(null);
       if (submitFileRef.current) submitFileRef.current.value = "";
-      await reload();
+      await syncAfter("Work submitted on-chain!", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -269,12 +295,21 @@ export default function EscrowDetailPage() {
       <Toast msg={toast} onClose={clearToast} />
       <div className="page">
 
-        {/* ── Back links ── */}
-        <div style={{ marginBottom: "1.25rem", display: "flex", gap: "1rem" }}>
-          <Link href="/" style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← Home</Link>
-          {isClient     && <Link href="/client"     style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← My Escrows</Link>}
-          {isFreelancer && <Link href="/freelancer" style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 700 }}>← My Contracts</Link>}
+        {/* ── Breadcrumb ── */}
+        <div style={{ marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", fontWeight: 700, color: "var(--ink-soft)" }}>
+          <Link href="/" style={{ color: "var(--ink-soft)" }}>Home</Link>
+          {isClient     && <><span>›</span><Link href="/client"     style={{ color: "var(--ink-soft)" }}>My Escrows</Link></>}
+          {isFreelancer && <><span>›</span><Link href="/freelancer" style={{ color: "var(--ink-soft)" }}>My Contracts</Link></>}
+          {escrow && <><span>›</span><span style={{ color: "var(--ink)" }}>{escrow.title}</span></>}
         </div>
+
+        {/* ── Sync indicator ── */}
+        {syncing && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.65rem 1rem", background: "var(--sage-lo)", border: "2.5px solid var(--line)", borderRadius: "var(--r-md)", marginBottom: "1rem", fontSize: "0.85rem", fontWeight: 700, color: "var(--leaf)" }}>
+            <span className="spinner" style={{ width: 14, height: 14 }} />
+            Syncing with blockchain…
+          </div>
+        )}
 
         {!publicKey ? (
           <div className="empty-state">

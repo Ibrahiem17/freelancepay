@@ -3,7 +3,11 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import { useState, useRef, useEffect } from "react";
-import { Bell, PenLine, Zap, RotateCcw, X, CheckCircle } from "lucide-react";
+import {
+  Bell, PenLine, Zap, RotateCcw, X, CheckCircle,
+  Menu, ChevronDown, User, Settings, BarChart2, LogOut,
+} from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useAuthContext } from "@/pages/_app";
 import useNotifications from "@/hooks/useNotifications";
 
@@ -21,8 +25,8 @@ const TYPE_ICON = {
   ESCROW_CREATED:     Bell,
 };
 
-function relativeTime(isoString) {
-  const diff = Date.now() - new Date(isoString).getTime();
+function relativeTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
@@ -31,8 +35,13 @@ function relativeTime(isoString) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function truncWallet(addr) {
+  return addr ? `${addr.slice(0, 4)}…${addr.slice(-4)}` : "";
+}
+
 export default function Navbar() {
   const { pathname } = useRouter();
+  const { connected } = useWallet();
   const auth = useAuthContext();
   const user = auth?.user ?? null;
 
@@ -40,24 +49,40 @@ export default function Navbar() {
     enabled: !!user,
   });
 
-  const [open, setOpen] = useState(false);
-  const bellRef = useRef(null);
+  const [bellOpen, setBellOpen] = useState(false);
+  const [dropOpen, setDropOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // Close dropdown on outside click
+  const bellRef = useRef(null);
+  const dropRef = useRef(null);
+
   useEffect(() => {
-    if (!open) return;
     function handle(e) {
-      if (bellRef.current && !bellRef.current.contains(e.target)) setOpen(false);
+      if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
+      if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false);
     }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+  }, []);
 
-  const linkStyle = (path) => ({
-    color: pathname === path ? "var(--ink)" : undefined,
-  });
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
-  const recent = notifications.slice(0, 5);
+  const isActive = (path) => pathname === path ? { color: "var(--ink)" } : {};
+  const initial  = user?.wallet?.slice(0, 1).toUpperCase() || "?";
+  const hue      = user?.wallet ? (user.wallet.charCodeAt(0) * 37) % 360 : 0;
+  const recent   = notifications.slice(0, 5);
+
+  const centerLinks = [
+    { href: "/",             label: "Home" },
+    { href: "/how-it-works", label: "How It Works" },
+    { href: "/marketplace",  label: "Marketplace", testid: "nav-marketplace" },
+    { href: "/jobs",         label: "Jobs",         testid: "nav-jobs" },
+    ...(connected ? [
+      { href: "/client",     label: "Client" },
+      { href: "/freelancer", label: "Freelancer" },
+      { href: "/analytics",  label: "Analytics" },
+    ] : []),
+  ];
 
   return (
     <>
@@ -67,44 +92,46 @@ export default function Navbar() {
       </div>
 
       <nav className="navbar">
-        <Link href="/" className="navbar-logo" style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+        {/* Left: Logo — flex:1 so center links stay centred */}
+        <Link href="/" className="navbar-logo" style={{ display: "flex", alignItems: "center", gap: "0.45rem", flex: "1 1 0" }}>
           <Image src="/logo.svg" alt="FreelancePay" width={34} height={34} />
           FreelancePay
         </Link>
 
+        {/* Center: Nav links */}
         <div className="navbar-links">
-          <Link href="/"             style={linkStyle("/")}>Home</Link>
-          <Link href="/how-it-works" style={linkStyle("/how-it-works")}>How It Works</Link>
-          <Link href="/client"       style={linkStyle("/client")}>Client</Link>
-          <Link href="/freelancer"   style={linkStyle("/freelancer")}>Freelancer</Link>
-          <Link href="/marketplace"  style={linkStyle("/marketplace")}>Marketplace</Link>
-          <Link href="/jobs"         style={linkStyle("/jobs")}>Jobs</Link>
-          {user && <Link href="/analytics" style={linkStyle("/analytics")}>Analytics</Link>}
+          {centerLinks.map(({ href, label, testid }) => (
+            <Link key={href} href={href} style={isActive(href)} data-testid={testid || undefined}>
+              {label}
+            </Link>
+          ))}
           <span className="devnet-badge">DEVNET</span>
+        </div>
 
+        {/* Right: bell + user/wallet + hamburger — flex:1 justified end */}
+        <div className="navbar-right">
+
+          {/* Notification bell */}
           {user && (
             <div ref={bellRef} style={{ position: "relative" }}>
               <button
                 className="btn-bell"
                 aria-label="Notifications"
-                onClick={() => setOpen((o) => !o)}
+                data-testid="notification-bell"
+                onClick={() => setBellOpen((o) => !o)}
               >
                 <Bell size={20} strokeWidth={2} />
                 {unreadCount > 0 && (
-                  <span className="bell-badge">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
+                  <span className="bell-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
                 )}
               </button>
 
-              {open && (
+              {bellOpen && (
                 <div className="notif-dropdown">
                   <div className="notif-dropdown-header">
                     <span className="caption">Notifications</span>
                     {unreadCount > 0 && (
-                      <button className="notif-mark-all" onClick={markAllAsRead}>
-                        Mark all read
-                      </button>
+                      <button className="notif-mark-all" onClick={markAllAsRead}>Mark all read</button>
                     )}
                   </div>
 
@@ -133,15 +160,12 @@ export default function Navbar() {
                               <Link
                                 href={`/escrow/${n.escrowPda}`}
                                 className="notif-link"
-                                onClick={() => { if (!n.read) markAsRead(n.id); setOpen(false); }}
+                                onClick={() => { if (!n.read) markAsRead(n.id); setBellOpen(false); }}
                               >
                                 {inner}
                               </Link>
                             ) : (
-                              <div
-                                className="notif-link"
-                                onClick={() => { if (!n.read) markAsRead(n.id); }}
-                              >
+                              <div className="notif-link" onClick={() => { if (!n.read) markAsRead(n.id); }}>
                                 {inner}
                               </div>
                             )}
@@ -152,7 +176,7 @@ export default function Navbar() {
                   )}
 
                   <div className="notif-dropdown-footer">
-                    <Link href="/notifications" onClick={() => setOpen(false)}>
+                    <Link href="/notifications" onClick={() => setBellOpen(false)}>
                       View all notifications →
                     </Link>
                   </div>
@@ -161,9 +185,92 @@ export default function Navbar() {
             </div>
           )}
 
-          <WalletMultiButton />
+          {/* User dropdown OR connect wallet button */}
+          {user ? (
+            <div ref={dropRef} style={{ position: "relative" }}>
+              <button className="user-avatar-btn" onClick={() => setDropOpen((o) => !o)} aria-label="Account menu">
+                <div className="user-avatar" style={{ background: `hsl(${hue},55%,78%)` }}>{initial}</div>
+                <span className="user-wallet-trunc">{truncWallet(user.wallet)}</span>
+                <ChevronDown size={13} strokeWidth={2.5} style={{ color: "var(--ink-soft)", flexShrink: 0 }} />
+              </button>
+
+              {dropOpen && (
+                <div className="user-dropdown-menu">
+                  <div className="user-dropdown-header">
+                    <div className="user-avatar user-avatar--lg" style={{ background: `hsl(${hue},55%,78%)` }}>{initial}</div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{truncWallet(user.wallet)}</div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--ink-soft)", fontWeight: 600 }}>Authenticated</div>
+                    </div>
+                  </div>
+                  <div className="user-dropdown-divider" />
+                  <Link className="user-dropdown-item" href={`/profile/${user.wallet}`} onClick={() => setDropOpen(false)}>
+                    <User size={14} strokeWidth={2} /> My Profile
+                  </Link>
+                  <Link className="user-dropdown-item" href="/settings" onClick={() => setDropOpen(false)}>
+                    <Settings size={14} strokeWidth={2} /> Settings
+                  </Link>
+                  <Link className="user-dropdown-item" href="/analytics" onClick={() => setDropOpen(false)}>
+                    <BarChart2 size={14} strokeWidth={2} /> Analytics
+                  </Link>
+                  <div className="user-dropdown-divider" />
+                  <button
+                    className="user-dropdown-item user-dropdown-item--danger"
+                    onClick={() => { auth.signOut(); setDropOpen(false); }}
+                  >
+                    <LogOut size={14} strokeWidth={2} /> Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div data-testid="connect-wallet-btn">
+              <WalletMultiButton />
+            </div>
+          )}
+
+          {/* Hamburger — visible only on mobile */}
+          <button
+            className="navbar-hamburger"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            {menuOpen ? <X size={22} strokeWidth={2} /> : <Menu size={22} strokeWidth={2} />}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile dropdown */}
+      {menuOpen && (
+        <div className="navbar-mobile-menu">
+          {centerLinks.map(({ href, label }) => (
+            <Link key={href} href={href} className="mobile-nav-link" onClick={() => setMenuOpen(false)}>
+              {label}
+            </Link>
+          ))}
+          {user ? (
+            <>
+              <div className="mobile-nav-divider" />
+              <Link href={`/profile/${user.wallet}`} className="mobile-nav-link" onClick={() => setMenuOpen(false)}>
+                My Profile
+              </Link>
+              <Link href="/settings" className="mobile-nav-link" onClick={() => setMenuOpen(false)}>
+                Settings
+              </Link>
+              <button
+                className="mobile-nav-link mobile-nav-link--danger"
+                onClick={() => { auth.signOut(); setMenuOpen(false); }}
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <div style={{ padding: "0.75rem 1.25rem" }}>
+              <WalletMultiButton />
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

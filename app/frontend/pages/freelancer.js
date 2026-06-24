@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { Wallet, FileText, Zap, PenLine, X, Paperclip, RefreshCw, Download } from "lucide-react";
+import { Wallet, FileText, Zap, PenLine, X, Paperclip, RefreshCw, Download, Briefcase } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -9,8 +9,26 @@ const WalletMultiButton = dynamic(
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
+import SkeletonCard from "@/components/SkeletonCard";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
+import { useAuthContext } from "@/pages/_app";
+
+const STATUS_DOWN = {
+  ACTIVE: "active", SUBMITTED: "submitted", COMPLETED: "completed",
+  CANCELLED: "cancelled", REVISION_REQUESTED: "revisionRequested",
+};
+
+function normEscrow(e) {
+  return {
+    ...e,
+    client:    e.clientWallet,
+    freelancer: e.freelancerWallet,
+    amount:    Number(e.amountLamports),
+    status:    STATUS_DOWN[e.status] || e.status.toLowerCase(),
+    createdAt: Math.floor(new Date(e.onChainCreatedAt).getTime() / 1000),
+  };
+}
 
 const LAMPORTS = 1_000_000_000;
 
@@ -69,7 +87,7 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   }
 
   return (
-    <div className="card" data-reveal="rise" style={{ marginBottom: "1rem" }}>
+    <div className="card" data-reveal="rise" data-testid="escrow-card" style={{ marginBottom: "1rem" }}>
       <div className="card-header">
         <div>
           <div className="card-title">{escrow.title}</div>
@@ -213,32 +231,55 @@ function EscrowCard({ escrow, onSubmitWork, onError, busy }) {
   );
 }
 
+const SYNC_DELAY = 2500;
+
 export default function FreelancerPage() {
   const { publicKey } = useWallet();
-  const { submitWork, fetchMyEscrowsAsFreelancer } = useEscrow();
+  const auth = useAuthContext();
+  const user = auth?.user ?? null;
+  const { submitWork } = useEscrow();
 
-  const [escrows, setEscrows]   = useState([]);
-  const [loading, setLoading]   = useState(false);
+  const [escrows,  setEscrows]  = useState([]);
+  const [loading,  setLoading]  = useState(false);
   const [fetching, setFetching] = useState(false);
-  const [toast, setToast]       = useState(null);
+  const [syncing,  setSyncing]  = useState(false);
+  const [earnings, setEarnings] = useState(null);
+  const [toast,    setToast]    = useState(null);
   const clearToast = useCallback(() => setToast(null), []);
 
   const loadEscrows = useCallback(async () => {
     if (!publicKey) return;
     setFetching(true);
-    const data = await fetchMyEscrowsAsFreelancer();
-    setEscrows(data.sort((a, b) => b.createdAt - a.createdAt));
-    setFetching(false);
-  }, [publicKey, fetchMyEscrowsAsFreelancer]);
+    try {
+      const res = await fetch(`/api/escrows?role=freelancer&wallet=${publicKey.toBase58()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setEscrows((data.escrows || []).map(normEscrow).sort((a, b) => b.createdAt - a.createdAt));
+    } finally {
+      setFetching(false);
+    }
+  }, [publicKey]);
 
   useEffect(() => { loadEscrows(); }, [loadEscrows]);
+
+  // Fetch earnings summary once authenticated
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/analytics/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.summary) setEarnings(data.summary); })
+      .catch(() => {});
+  }, [user]);
 
   async function handleSubmitWork(pda, encodedDescription) {
     setLoading(true);
     const r = await submitWork(pda, encodedDescription);
     if (r.success) {
       setToast({ type: "success", text: "Work submitted on-chain! Waiting for client approval.", signature: r.signature });
+      setSyncing(true);
+      await new Promise((res) => setTimeout(res, SYNC_DELAY));
       await loadEscrows();
+      setSyncing(false);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -272,6 +313,31 @@ export default function FreelancerPage() {
           </div>
         ) : (
           <>
+            {/* ── Sync indicator ── */}
+            {syncing && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.65rem 1rem", background: "var(--sage-lo)", border: "2.5px solid var(--line)", borderRadius: "var(--r-md)", marginBottom: "1rem", fontSize: "0.85rem", fontWeight: 700, color: "var(--leaf)" }}>
+                <span className="spinner" style={{ width: 14, height: 14 }} />
+                Syncing with blockchain…
+              </div>
+            )}
+
+            {/* ── Earnings strip ── */}
+            {earnings && (
+              <div className="fl-earnings-strip">
+                <div>
+                  <span className="fl-earn-label">Total Earned</span>
+                  <span className="fl-earn-value">{earnings.totalEarnedSOL} SOL</span>
+                </div>
+                <div>
+                  <span className="fl-earn-label">Pending</span>
+                  <span className="fl-earn-value">{earnings.pendingEarningsSOL} SOL</span>
+                </div>
+                <Link href="/jobs" className="btn btn-sm btn-outline" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                  <Briefcase size={13} strokeWidth={2} /> Browse Available Jobs
+                </Link>
+              </div>
+            )}
+
             {escrows.length > 0 && (
               <div
                 data-reveal="zoom"
@@ -299,12 +365,21 @@ export default function FreelancerPage() {
               </button>
             </div>
 
-            {escrows.length === 0 ? (
+            {fetching && escrows.length === 0 ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : escrows.length === 0 ? (
               <div className="empty-state">
                 <div className="icon-badge" style={{ margin: "0 auto 0.75rem" }}>
                   <FileText size={22} strokeWidth={2} aria-hidden />
                 </div>
-                {fetching ? "Loading contracts…" : "No contracts assigned to your wallet yet. Share your wallet address with a client to get started."}
+                <p style={{ marginBottom: "1rem" }}>No contracts assigned to your wallet yet.</p>
+                <Link href="/jobs" className="btn btn-outline btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                  <Briefcase size={13} strokeWidth={2} /> Browse Available Jobs
+                </Link>
               </div>
             ) : (
               escrows.map((e) => (

@@ -8,12 +8,7 @@ const WalletMultiButton = dynamic(
 );
 import Layout from "@/components/Layout";
 
-const STATS = [
-  { value: "4M+",   label: "Pakistani freelancers" },
-  { value: "0%",    label: "Platform fees" },
-  { value: "<2s",   label: "Payment speed" },
-  { value: "$1.5B", label: "Annual earnings at risk" },
-];
+// STATS is built from live getStaticProps data — see below
 
 const STEPS = [
   {
@@ -118,7 +113,13 @@ function CompactJobCard({ job }) {
   );
 }
 
-export default function Home({ featuredFreelancers = [], latestJobs = [] }) {
+export default function Home({ featuredFreelancers = [], latestJobs = [], platformStats = {} }) {
+  const STATS = [
+    { value: platformStats.freelancers ?? "4M+",  label: "Freelancers",     count: platformStats.freelancersRaw },
+    { value: "0%",                                label: "Platform fees" },
+    { value: "<2s",                               label: "Payment speed" },
+    { value: platformStats.volume ?? "0 SOL",     label: "Volume processed" },
+  ];
   const { connected } = useWallet();
 
   return (
@@ -166,17 +167,27 @@ export default function Home({ featuredFreelancers = [], latestJobs = [] }) {
             <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", fontWeight: 600, margin: 0 }}>Connect Phantom to get started</p>
           </div>
         )}
+        <div data-enter style={{ display: "flex", gap: "0.6rem", justifyContent: "center", marginTop: "1.25rem", flexWrap: "wrap" }}>
+          <Link href="/marketplace" className="btn btn-sm btn-outline">Browse Freelancers →</Link>
+          <Link href="/jobs"        className="btn btn-sm btn-outline">Find Work →</Link>
+        </div>
       </section>
 
       {/* ── Stats ────────────────────────────────── */}
-      <section style={{ maxWidth: 900, margin: "0 auto", padding: "0 1.5rem 3.5rem" }}>
+      <section style={{ maxWidth: 900, margin: "0 auto", padding: "0 1.5rem 3.5rem" }} data-testid="platform-stats">
         <div
           data-reveal="zoom"
           style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1px", background: "var(--line)", borderRadius: "var(--r-md)", overflow: "hidden", border: "2.5px solid var(--line)" }}
         >
-          {STATS.map(({ value, label }) => (
+          {STATS.map(({ value, label, count }) => (
             <div key={label} style={{ background: "var(--paper)", padding: "1.5rem", textAlign: "center" }}>
-              <div className="amount" style={{ fontSize: "1.9rem", color: "var(--brown)" }}>{value}</div>
+              <div
+                className="amount"
+                style={{ fontSize: "1.9rem", color: "var(--brown)" }}
+                data-count={count || undefined}
+              >
+                {value}
+              </div>
               <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)", marginTop: 4, fontWeight: 600 }}>{label}</div>
             </div>
           ))}
@@ -298,7 +309,7 @@ export async function getStaticProps() {
   try {
     const prisma = require("../lib/prisma");
 
-    const [freelancerRows, jobRows] = await Promise.all([
+    const [freelancerRows, jobRows, escrowCount, completedCount, freelancerCount, volumeRow] = await Promise.all([
       prisma.user.findMany({
         where: { isFreelancer: true },
         orderBy: [
@@ -326,6 +337,13 @@ export async function getStaticProps() {
           },
         },
       }),
+      prisma.escrow.count(),
+      prisma.escrow.count({ where: { status: "COMPLETED" } }),
+      prisma.user.count({ where: { isFreelancer: true } }),
+      prisma.escrow.aggregate({
+        where: { status: "COMPLETED" },
+        _sum:  { amountLamports: true },
+      }),
     ]);
 
     const freelancers = freelancerRows.map((u) => ({
@@ -352,13 +370,24 @@ export async function getStaticProps() {
       },
     }));
 
+    const lamports    = volumeRow._sum.amountLamports ?? 0n;
+    const volumeSOL   = (Number(lamports) / 1_000_000_000).toFixed(2);
+
+    const platformStats = {
+      freelancers:    freelancerCount > 0 ? `${freelancerCount}+` : "4M+",
+      freelancersRaw: freelancerCount,
+      volume:         `${volumeSOL} SOL`,
+      completed:      completedCount,
+      total:          escrowCount,
+    };
+
     return {
-      props: { featuredFreelancers: freelancers, latestJobs: jobs },
+      props: { featuredFreelancers: freelancers, latestJobs: jobs, platformStats },
       revalidate: 60,
     };
   } catch {
     return {
-      props:      { featuredFreelancers: [], latestJobs: [] },
+      props:      { featuredFreelancers: [], latestJobs: [], platformStats: {} },
       revalidate: 60,
     };
   }

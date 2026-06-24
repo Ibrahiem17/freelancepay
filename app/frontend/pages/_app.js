@@ -8,6 +8,7 @@ import { Buffer } from "buffer";
 import { Gaegu, Nunito } from "next/font/google";
 import { initTheme } from "@/utils/theme";
 import useAuth from "@/hooks/useAuth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Make Buffer available globally in the browser for @solana/web3.js
 if (typeof window !== "undefined") {
@@ -56,7 +57,9 @@ export default function App({ Component, pageProps }) {
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
             <AuthProvider>
-              <Component {...pageProps} />
+              <ErrorBoundary>
+                <Component {...pageProps} />
+              </ErrorBoundary>
             </AuthProvider>
           </WalletModalProvider>
         </WalletProvider>

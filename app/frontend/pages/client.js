@@ -10,8 +10,25 @@ const WalletMultiButton = dynamic(
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import Toast from "@/components/Toast";
+import SkeletonCard from "@/components/SkeletonCard";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { parseSubmission } from "@/utils/ipfs";
+
+const STATUS_DOWN = {
+  ACTIVE: "active", SUBMITTED: "submitted", COMPLETED: "completed",
+  CANCELLED: "cancelled", REVISION_REQUESTED: "revisionRequested",
+};
+
+function normEscrow(e) {
+  return {
+    ...e,
+    client:    e.clientWallet,
+    freelancer: e.freelancerWallet,
+    amount:    Number(e.amountLamports),
+    status:    STATUS_DOWN[e.status] || e.status.toLowerCase(),
+    createdAt: Math.floor(new Date(e.onChainCreatedAt).getTime() / 1000),
+  };
+}
 
 const LAMPORTS = 1_000_000_000;
 
@@ -48,7 +65,7 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
   }
 
   return (
-    <div className="card" data-reveal="rise" style={{ marginBottom: "1rem" }}>
+    <div className="card" data-reveal="rise" data-testid="escrow-card" style={{ marginBottom: "1rem" }}>
       <div className="card-header">
         <div>
           <div className="card-title">{escrow.title}</div>
@@ -164,37 +181,54 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy }) {
   );
 }
 
+const SYNC_DELAY = 2500;
+
 export default function ClientPage() {
   const { publicKey } = useWallet();
   const router = useRouter();
-  const { createEscrow, approveWork, cancelEscrow, requestRevision, fetchMyEscrowsAsClient } = useEscrow();
+  const { createEscrow, approveWork, cancelEscrow, requestRevision } = useEscrow();
 
   const [form, setForm]       = useState({ title: "", description: "", freelancer: "", amount: "" });
 
-  // Pre-fill freelancer wallet from ?hire= query param (set by Marketplace "Hire Me" button)
+  // Pre-fill freelancer wallet from ?hire= query param (set by profile page "Hire Me")
   useEffect(() => {
     if (router.query.hire) {
       setForm((f) => ({ ...f, freelancer: router.query.hire }));
     }
   }, [router.query.hire]);
-  const [escrows, setEscrows] = useState([]);
-  const [loading, setLoading] = useState(false);
+
+  const [escrows,  setEscrows]  = useState([]);
+  const [loading,  setLoading]  = useState(false);
   const [fetching, setFetching] = useState(false);
-  const [toast, setToast]     = useState(null);
+  const [syncing,  setSyncing]  = useState(false);
+  const [toast,    setToast]    = useState(null);
 
   const clearToast = useCallback(() => setToast(null), []);
 
   const loadEscrows = useCallback(async () => {
     if (!publicKey) return;
     setFetching(true);
-    const data = await fetchMyEscrowsAsClient();
-    setEscrows(data.sort((a, b) => b.createdAt - a.createdAt));
-    setFetching(false);
-  }, [publicKey, fetchMyEscrowsAsClient]);
+    try {
+      const res = await fetch(`/api/escrows?role=client&wallet=${publicKey.toBase58()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setEscrows((data.escrows || []).map(normEscrow).sort((a, b) => b.createdAt - a.createdAt));
+    } finally {
+      setFetching(false);
+    }
+  }, [publicKey]);
 
   useEffect(() => { loadEscrows(); }, [loadEscrows]);
 
   const field = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function syncAfter(msg, signature) {
+    setToast({ type: "success", text: msg, signature });
+    setSyncing(true);
+    await new Promise((r) => setTimeout(r, SYNC_DELAY));
+    await loadEscrows();
+    setSyncing(false);
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -202,9 +236,8 @@ export default function ClientPage() {
     setLoading(true);
     const r = await createEscrow(form.title, form.description, form.freelancer, parseFloat(form.amount));
     if (r.success) {
-      setToast({ type: "success", text: `Escrow created! ${parseFloat(form.amount)} SOL locked.`, signature: r.signature });
       setForm({ title: "", description: "", freelancer: "", amount: "" });
-      await loadEscrows();
+      await syncAfter(`Escrow created! ${parseFloat(form.amount)} SOL locked.`, r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -215,8 +248,7 @@ export default function ClientPage() {
     setLoading(true);
     const r = await approveWork(escrow.pda, escrow.freelancer);
     if (r.success) {
-      setToast({ type: "success", text: "Work approved! SOL sent to freelancer.", signature: r.signature });
-      await loadEscrows();
+      await syncAfter("Work approved! SOL sent to freelancer.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -227,8 +259,7 @@ export default function ClientPage() {
     setLoading(true);
     const r = await cancelEscrow(escrow.pda);
     if (r.success) {
-      setToast({ type: "success", text: "Escrow cancelled. SOL refunded to your wallet.", signature: r.signature });
-      await loadEscrows();
+      await syncAfter("Escrow cancelled. SOL refunded to your wallet.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -239,8 +270,7 @@ export default function ClientPage() {
     setLoading(true);
     const r = await requestRevision(escrow.pda, message);
     if (r.success) {
-      setToast({ type: "success", text: "Revision requested.", signature: r.signature });
-      await loadEscrows();
+      await syncAfter("Revision requested.", r.signature);
     } else {
       setToast({ type: "error", text: r.error });
     }
@@ -270,12 +300,20 @@ export default function ClientPage() {
           </div>
         ) : (
           <>
+            {/* ── Sync indicator ── */}
+            {syncing && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.65rem 1rem", background: "var(--sage-lo)", border: "2.5px solid var(--line)", borderRadius: "var(--r-md)", marginBottom: "1rem", fontSize: "0.85rem", fontWeight: 700, color: "var(--leaf)" }}>
+                <span className="spinner" style={{ width: 14, height: 14 }} />
+                Syncing with blockchain…
+              </div>
+            )}
+
             {/* ── Create form ── */}
             <div className="card" style={{ marginBottom: "2rem" }}>
               <h2 data-enter style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.25rem", fontFamily: "var(--font-display)" }}>
                 Create New Escrow
               </h2>
-              <form onSubmit={handleCreate}>
+              <form onSubmit={handleCreate} data-testid="create-escrow-form">
                 <div className="form-group">
                   <label className="form-label">Project title *</label>
                   <input className="form-input" value={form.title} onChange={field("title")} placeholder="e.g. Build my e-commerce website" required />
@@ -310,10 +348,14 @@ export default function ClientPage() {
               </button>
             </div>
 
-            {escrows.length === 0 ? (
-              <div className="empty-state">
-                {fetching ? "Loading your escrows…" : "No escrows yet. Create your first one above."}
-              </div>
+            {fetching && escrows.length === 0 ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : escrows.length === 0 ? (
+              <div className="empty-state">No escrows yet. Create your first one above.</div>
             ) : (
               escrows.map((e) => (
                 <EscrowCard
