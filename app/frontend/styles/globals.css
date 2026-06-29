@@ -1788,8 +1788,8 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 
 /* ============================================================
    Y2K THEME — [data-theme="y2k"]
-   Neon on black. Chrome headings. Hard edges. Dot grid.
-   No blur. No glass. Just the real thing.
+   Black base. Dot grid. Wireframe abstraction. One accent color.
+   No blur. No glass. No glow.
    ============================================================ */
 
 /* ── CORE TOKEN OVERRIDES ── */
@@ -1798,44 +1798,45 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   --font-body:    var(--font-body-y2k);
 
   --ink:        #e8e8f4;
-  --ink-soft:   rgba(232,232,244,0.50);
+  --ink-soft:   rgba(232,232,244,0.48);
   --cream:      #050508;
   --paper:      #0d0d18;
-  --line:       rgba(0,240,255,0.14);
-  --line-2:     rgba(0,240,255,0.22);
+  --line:       rgba(0,240,255,0.12);
+  --line-2:     rgba(0,240,255,0.18);
 
+  /* Single accent: cyan. Semantic status colors kept for function only. */
   --lav:        #00f0ff;
   --lav-lo:     rgba(0,240,255,0.07);
-  --sage:       #ccff00;
-  --sage-lo:    rgba(204,255,0,0.07);
-  --butter:     #ff00cc;
-  --butter-lo:  rgba(255,0,204,0.07);
-  --pink:       #ff6ec7;
-  --pink-lo:    rgba(255,110,199,0.07);
-  --peach:      #ff6600;
-  --peach-lo:   rgba(255,102,0,0.07);
+  --sage:       #c8ff00;
+  --sage-lo:    rgba(200,255,0,0.07);
+  --butter:     #00f0ff;
+  --butter-lo:  rgba(0,240,255,0.07);
+  --pink:       #00f0ff;
+  --pink-lo:    rgba(0,240,255,0.07);
+  --peach:      #ffcc00;
+  --peach-lo:   rgba(255,204,0,0.07);
   --sky:        #00f0ff;
   --sky-lo:     rgba(0,240,255,0.07);
-  --leaf:       #ccff00;
-  --brown:      #ff00cc;
+  --leaf:       #c8ff00;
+  --brown:      #00f0ff;
 
-  --ok:    #ccff00;
+  --ok:    #c8ff00;
   --warn:  #ffcc00;
   --err:   #ff3344;
   --focus: #00f0ff;
 
   --blue:   #00f0ff;
-  --green:  #ccff00;
+  --green:  #c8ff00;
   --amber:  #ffcc00;
   --red:    #ff3344;
-  --orange: #ff6600;
-  --purple: #cc00ff;
+  --orange: #ffcc00;
+  --purple: #00f0ff;
 
-  --sh-sm:  0 2px 10px rgba(0,0,0,0.85);
-  --sh-md:  0 4px 22px rgba(0,0,0,0.85);
-  --sh-lg:  0 8px 40px rgba(0,0,0,0.85);
-  --sh-glow: 0 0 0 1px rgba(0,240,255,0.45);
-  --rim:    inset 0 1px 0 rgba(255,255,255,0.05);
+  --sh-sm:  0 2px 8px rgba(0,0,0,0.85);
+  --sh-md:  0 4px 18px rgba(0,0,0,0.85);
+  --sh-lg:  0 8px 32px rgba(0,0,0,0.85);
+  --sh-glow: 0 0 0 1px rgba(0,240,255,0.30);
+  --rim:    inset 0 1px 0 rgba(255,255,255,0.04);
 
   --r-pill: 999px;
   --r-lg:   5px;
@@ -1853,13 +1854,12 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   letter-spacing: 0.01em;
 }
 
-/* Chrome gradient on all page-level headings */
+/* Chrome gradient on all page-level headings — no glow */
 [data-theme="y2k"] h1 {
   background: linear-gradient(180deg, #ffffff 0%, #c0c0e0 30%, #8888bb 65%, #e8e8ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 22px rgba(0,240,255,0.22));
 }
 
 [data-theme="y2k"] body,
@@ -1874,35 +1874,37 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   font-family: var(--font-body-y2k), 'Inter', system-ui, sans-serif;
 }
 
-/* ── BODY — black with dot grid ── */
+/* ── BODY — black, dot grid, major grid, abstract wireframe ── */
 [data-theme="y2k"] body {
   background-color: #050508;
   background-image:
-    radial-gradient(circle, rgba(0,240,255,0.13) 1px, transparent 1px),
-    radial-gradient(ellipse at 15% 10%, rgba(0,240,255,0.05) 0%, transparent 45%),
-    radial-gradient(ellipse at 85% 88%, rgba(204,0,255,0.04) 0%, transparent 45%);
-  background-size: 28px 28px, auto, auto;
+    radial-gradient(circle, rgba(0,240,255,0.11) 1px, transparent 1px),
+    linear-gradient(rgba(0,240,255,0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,0.028) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700'%3E%3Cpolygon points='350,28 636,192 636,508 350,672 64,508 64,192' fill='none' stroke='rgba(0,240,255,0.055)' stroke-width='1'/%3E%3Cpolygon points='350,118 560,242 560,458 350,582 140,458 140,242' fill='none' stroke='rgba(0,240,255,0.038)' stroke-width='1'/%3E%3Cpolygon points='350,208 490,296 490,404 350,492 210,404 210,296' fill='none' stroke='rgba(0,240,255,0.026)' stroke-width='0.8'/%3E%3Cline x1='64' y1='350' x2='636' y2='350' stroke='rgba(0,240,255,0.032)' stroke-width='0.7'/%3E%3Cline x1='350' y1='28' x2='350' y2='672' stroke='rgba(0,240,255,0.032)' stroke-width='0.7'/%3E%3C/svg%3E");
+  background-size: 28px 28px, 112px 112px, 112px 112px, 62vmin 62vmin;
+  background-position: 0 0, 0 0, 0 0, center center;
+  background-repeat: repeat, repeat, repeat, no-repeat;
   background-attachment: fixed;
 }
 
-/* ── NAVBAR — solid black, neon underline ── */
+/* ── NAVBAR — solid black, cyan underline ── */
 [data-theme="y2k"] .navbar {
   background: #04040a !important;
-  border-bottom: 1px solid rgba(0,240,255,0.18) !important;
+  border-bottom: 1px solid rgba(0,240,255,0.16) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: 0 1px 0 rgba(0,240,255,0.06), 0 4px 24px rgba(0,0,0,0.70) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.65) !important;
 }
 [data-theme="y2k"] .navbar::after {
   content: '';
   position: absolute;
   bottom: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, transparent 5%, #00f0ff 35%, #cc00ff 65%, transparent 95%);
-  opacity: 0.35;
+  background: linear-gradient(90deg, transparent 5%, rgba(0,240,255,0.50) 50%, transparent 95%);
   pointer-events: none;
 }
 [data-theme="y2k"] .navbar.is-stuck {
-  box-shadow: 0 0 0 1px rgba(0,240,255,0.12), 0 8px 32px rgba(0,0,0,0.80) !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.80) !important;
 }
 
 /* ── LOGO — chrome ── */
@@ -1938,11 +1940,8 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 [data-theme="y2k"] .card::after { display: none; }
 
 [data-theme="y2k"] .card:hover {
-  border-color: rgba(0,240,255,0.32);
-  box-shadow:
-    0 0 18px rgba(0,240,255,0.08),
-    0 6px 28px rgba(0,0,0,0.80),
-    inset 0 1px 0 rgba(255,255,255,0.04);
+  border-color: rgba(0,240,255,0.30);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.80), inset 0 1px 0 rgba(255,255,255,0.04);
   transform: translateY(-2px);
   background: #0d0d18;
 }
@@ -1966,7 +1965,6 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 [data-theme="y2k"] .btn:hover {
   background: rgba(0,240,255,0.10);
   border-color: rgba(0,240,255,0.55);
-  box-shadow: 0 0 14px rgba(0,240,255,0.18);
   transform: translateY(-1px);
   color: #80f8ff;
 }
@@ -1981,25 +1979,22 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   border-color: #00f0ff;
   color: #000;
   font-weight: 800;
-  box-shadow: 0 0 18px rgba(0,240,255,0.28);
 }
 [data-theme="y2k"] .btn-primary:hover {
   background: linear-gradient(135deg, #008daa 0%, #00dcf8 55%, #80f8ff 100%);
-  box-shadow: 0 0 26px rgba(0,240,255,0.45);
   color: #000;
   transform: translateY(-1px);
 }
 
 [data-theme="y2k"] .btn-success {
-  background: rgba(204,255,0,0.07);
-  border-color: rgba(204,255,0,0.40);
-  color: #ccff00;
+  background: rgba(200,255,0,0.07);
+  border-color: rgba(200,255,0,0.40);
+  color: #c8ff00;
 }
 [data-theme="y2k"] .btn-success:hover {
-  background: rgba(204,255,0,0.13);
-  border-color: #ccff00;
-  box-shadow: 0 0 14px rgba(204,255,0,0.22);
-  color: #ccff00;
+  background: rgba(200,255,0,0.13);
+  border-color: #c8ff00;
+  color: #c8ff00;
 }
 
 [data-theme="y2k"] .btn-danger {
@@ -2010,7 +2005,6 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 [data-theme="y2k"] .btn-danger:hover {
   background: rgba(255,51,68,0.13);
   border-color: #ff3344;
-  box-shadow: 0 0 14px rgba(255,51,68,0.22);
   color: #ff3344;
 }
 
@@ -2048,18 +2042,15 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 [data-theme="y2k"] .card-amount {
   color: #00f0ff;
   -webkit-text-fill-color: #00f0ff;
-  text-shadow: 0 0 12px rgba(0,240,255,0.35);
   background: none;
 }
 [data-theme="y2k"] .amount--muted {
   color: rgba(232,232,244,0.30);
   -webkit-text-fill-color: rgba(232,232,244,0.30);
-  text-shadow: none;
 }
 [data-theme="y2k"] .amount--released {
-  color: #ccff00;
-  -webkit-text-fill-color: #ccff00;
-  text-shadow: 0 0 10px rgba(204,255,0,0.35);
+  color: #c8ff00;
+  -webkit-text-fill-color: #c8ff00;
 }
 
 /* ── BADGES — square, uppercase, neon ── */
@@ -2082,9 +2073,9 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   border-color: rgba(255,204,0,0.28);
 }
 [data-theme="y2k"] .badge-completed {
-  background: rgba(204,255,0,0.07);
-  color: #ccff00;
-  border-color: rgba(204,255,0,0.28);
+  background: rgba(200,255,0,0.07);
+  color: #c8ff00;
+  border-color: rgba(200,255,0,0.28);
 }
 [data-theme="y2k"] .badge-cancelled {
   background: rgba(255,51,68,0.07);
@@ -2108,24 +2099,21 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   color: #00f0ff;
   background: rgba(0,240,255,0.05);
   border-color: rgba(0,240,255,0.22);
-  text-shadow: 0 0 8px rgba(0,240,255,0.40);
 }
 [data-theme="y2k"] .stamp--escrow {
   color: #ffcc00;
   background: rgba(255,204,0,0.05);
   border-color: rgba(255,204,0,0.20);
-  text-shadow: 0 0 8px rgba(255,204,0,0.35);
 }
 [data-theme="y2k"] .stamp--revision {
-  color: #ff6600;
-  background: rgba(255,102,0,0.05);
-  border-color: rgba(255,102,0,0.20);
+  color: #ffcc00;
+  background: rgba(255,204,0,0.05);
+  border-color: rgba(255,204,0,0.20);
 }
 [data-theme="y2k"] .stamp--released {
-  color: #ccff00;
-  background: rgba(204,255,0,0.05);
-  border-color: rgba(204,255,0,0.22);
-  text-shadow: 0 0 8px rgba(204,255,0,0.35);
+  color: #c8ff00;
+  background: rgba(200,255,0,0.05);
+  border-color: rgba(200,255,0,0.22);
 }
 [data-theme="y2k"] .stamp--refunded {
   color: #ff3344;
@@ -2135,10 +2123,7 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 
 /* ── LOCK CUE ── */
 [data-theme="y2k"] .locked-cue { color: rgba(232,232,244,0.25); }
-[data-theme="y2k"] .locked-cue--released {
-  color: #ccff00;
-  text-shadow: 0 0 8px rgba(204,255,0,0.35);
-}
+[data-theme="y2k"] .locked-cue--released { color: #c8ff00; }
 
 /* ── DEVNET BADGE ── */
 [data-theme="y2k"] .devnet-badge,
@@ -2215,8 +2200,7 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 [data-theme="y2k"] .wallet-adapter-button:hover {
   background: rgba(0,240,255,0.13) !important;
-  border-color: rgba(0,240,255,0.60) !important;
-  box-shadow: 0 0 14px rgba(0,240,255,0.20) !important;
+  border-color: rgba(0,240,255,0.55) !important;
 }
 
 /* ── THEME TOGGLE BUTTON STYLES ── */
@@ -2256,7 +2240,6 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 .theme-toggle--y2k:hover {
   background: rgba(0,240,255,0.13);
-  box-shadow: 0 0 10px rgba(0,240,255,0.18);
   transform: translateY(-1px);
 }
 
@@ -2270,7 +2253,6 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 [data-theme="y2k"] .theme-toggle__dot {
   background: #00f0ff;
-  box-shadow: 0 0 6px rgba(0,240,255,0.65);
 }
 
 /* ── SCROLLBAR ── */
@@ -2294,7 +2276,6 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 [data-theme="y2k"] a:not(.btn):not([class*="badge"]) { color: #00f0ff; }
 [data-theme="y2k"] a:not(.btn):not([class*="badge"]):hover {
   color: #80f8ff;
-  text-shadow: 0 0 8px rgba(0,240,255,0.30);
 }
 
 /* ── VaultSVG tint ── */
@@ -2305,13 +2286,11 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 
 /* ── Progress timeline dots ── */
 [data-theme="y2k"] .timeline-dot--done {
-  background: #ccff00;
-  border-color: #ccff00;
-  box-shadow: 0 0 8px rgba(204,255,0,0.40);
+  background: #c8ff00;
+  border-color: #c8ff00;
 }
 [data-theme="y2k"] .timeline-dot--current {
   border-color: #00f0ff;
-  box-shadow: 0 0 8px rgba(0,240,255,0.40);
 }
 
 /* ── Mono (wallet address) ── */
