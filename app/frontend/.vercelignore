@@ -1,0 +1,12 @@
+node_modules
+.next
+coverage
+e2e
+__tests__
+scripts
+*.test.js
+*.spec.js
+babel.jest.config.js
+jest.config.js
+jest.setup.js
+playwright.config.js
