@@ -1793,6 +1793,9 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 
 /* ── CORE TOKEN OVERRIDES ── */
 [data-theme="y2k"] {
+  --font-display: var(--font-display-y2k);
+  --font-body:    var(--font-body-y2k);
+
   --ink:        #eeeef8;
   --ink-soft:   rgba(238,238,248,0.45);
   --cream:      #07071a;

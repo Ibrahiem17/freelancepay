@@ -5,7 +5,7 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { Buffer } from "buffer";
-import { Gaegu, Nunito } from "next/font/google";
+import { Gaegu, Nunito, Inter, Space_Grotesk } from "next/font/google";
 import { initTheme } from "@/utils/theme";
 import useAuth from "@/hooks/useAuth";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -26,6 +26,20 @@ const nunito = Nunito({
   weight: ["400", "600", "700", "800"],
   subsets: ["latin"],
   variable: "--font-body",
+  display: "swap",
+});
+
+const inter = Inter({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-body-y2k",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-display-y2k",
   display: "swap",
 });
 
@@ -52,7 +66,7 @@ export default function App({ Component, pageProps }) {
   }, []);
 
   return (
-    <div className={`${gaegu.variable} ${nunito.variable}`} style={{ minHeight: "100vh" }}>
+    <div className={`${gaegu.variable} ${nunito.variable} ${inter.variable} ${spaceGrotesk.variable}`} style={{ minHeight: "100vh" }}>
       <ConnectionProvider endpoint={DEVNET_RPC}>
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
