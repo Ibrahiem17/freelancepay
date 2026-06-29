@@ -10,6 +10,7 @@ import {
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useAuthContext } from "@/pages/_app";
 import useNotifications from "@/hooks/useNotifications";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
@@ -110,6 +111,8 @@ export default function Navbar() {
 
         {/* Right: bell + user/wallet + hamburger — flex:1 justified end */}
         <div className="navbar-right">
+
+          <ThemeToggle />
 
           {/* Notification bell */}
           {user && (

@@ -1785,3 +1785,530 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   .navbar-hamburger { display: flex; }
   .user-wallet-trunc { display: none; }
 }
+
+/* ============================================================
+   Y2K GLASS THEME — [data-theme="y2k"]
+   One accent. Real glass. Iridescent border. That is all.
+   ============================================================ */
+
+/* ── CORE TOKEN OVERRIDES ── */
+[data-theme="y2k"] {
+  --ink:        #eeeef8;
+  --ink-soft:   rgba(238,238,248,0.45);
+  --cream:      #07071a;
+  --paper:      rgba(255,255,255,0.055);
+  --line:       rgba(255,255,255,0.09);
+  --line-2:     rgba(255,255,255,0.11);
+
+  --lav:        #818cf8;
+  --lav-lo:     rgba(129,140,248,0.10);
+  --sage:       #6ee7b7;
+  --sage-lo:    rgba(110,231,183,0.10);
+  --butter:     #fcd34d;
+  --butter-lo:  rgba(252,211,77,0.10);
+  --pink:       #f87171;
+  --pink-lo:    rgba(248,113,113,0.10);
+  --peach:      #fb923c;
+  --peach-lo:   rgba(251,146,60,0.10);
+  --sky:        #818cf8;
+  --sky-lo:     rgba(129,140,248,0.10);
+  --leaf:       #6ee7b7;
+  --brown:      #818cf8;
+
+  --ok:    #6ee7b7;
+  --warn:  #fcd34d;
+  --err:   #f87171;
+  --focus: #818cf8;
+
+  --blue:   #818cf8;
+  --green:  #6ee7b7;
+  --amber:  #fcd34d;
+  --red:    #f87171;
+  --orange: #fb923c;
+  --purple: #a78bfa;
+
+  --sh-sm:  0 4px 16px rgba(0,0,0,0.50);
+  --sh-md:  0 8px 32px rgba(0,0,0,0.55);
+  --sh-lg:  0 16px 48px rgba(0,0,0,0.60);
+  --sh-glow:0 0 0 3px rgba(129,140,248,0.20);
+  --rim:    inset 0 1px 0 rgba(255,255,255,0.14);
+
+  --r-pill: 999px;
+  --r-lg:   26px;
+  --r-md:   20px;
+  --r-sm:   14px;
+}
+
+/* ── BODY ── */
+[data-theme="y2k"] body {
+  background-color: #07071a;
+  background-image:
+    radial-gradient(ellipse at 25% 15%, rgba(129,140,248,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 78% 82%, rgba(110,231,183,0.05) 0%, transparent 55%);
+  background-attachment: fixed;
+  background-size: auto;
+}
+
+/* ── NAVBAR ── */
+[data-theme="y2k"] .navbar {
+  background: rgba(7,7,26,0.75) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+  box-shadow: none !important;
+}
+[data-theme="y2k"] .navbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(129,140,248,0.20), transparent);
+  pointer-events: none;
+}
+[data-theme="y2k"] .navbar.is-stuck {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.50) !important;
+}
+
+/* ── LOGO — silver chrome only ── */
+[data-theme="y2k"] .navbar-logo span,
+[data-theme="y2k"] .navbar a[href="/"] span,
+[data-theme="y2k"] .site-name {
+  background: linear-gradient(135deg, #c0c0dc 0%, #f0f0ff 45%, #9898be 70%, #e0e0ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── CARDS — frosted glass with iridescent border ── */
+[data-theme="y2k"] .card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45), var(--rim);
+  position: relative;
+  overflow: visible;
+}
+
+/* The iridescent prism border — the ONE signature element */
+[data-theme="y2k"] .card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--r-md) + 1px);
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.22) 0%,
+    rgba(129,140,248,0.18) 20%,
+    rgba(255,255,255,0.06) 45%,
+    rgba(110,231,183,0.12) 65%,
+    rgba(255,255,255,0.10) 80%,
+    rgba(129,140,248,0.16) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Top specular light hit */
+[data-theme="y2k"] .card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 10%; right: 10%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.30), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-theme="y2k"] .card:hover {
+  background: rgba(255,255,255,0.07);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), var(--rim);
+  transform: translateY(-3px);
+}
+
+/* ── BUTTONS — pill glass with inner highlight ── */
+[data-theme="y2k"] .btn {
+  border-radius: 999px !important;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  color: var(--ink);
+  backdrop-filter: blur(8px);
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+  transition: all 0.18s ease;
+}
+
+/* Glass dome inner highlight on all buttons */
+[data-theme="y2k"] .btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+  border-radius: 999px 999px 0 0;
+  pointer-events: none;
+}
+
+[data-theme="y2k"] .btn:hover {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(129,140,248,0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 0 14px rgba(129,140,248,0.15);
+  transform: translateY(-2px) rotate(0deg);
+}
+
+[data-theme="y2k"] .btn:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+[data-theme="y2k"] .btn-primary {
+  background: rgba(129,140,248,0.12);
+  border-color: rgba(129,140,248,0.35);
+  color: #c7d2fe;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 0 16px rgba(129,140,248,0.12);
+}
+[data-theme="y2k"] .btn-primary:hover {
+  background: rgba(129,140,248,0.20);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 0 24px rgba(129,140,248,0.22);
+}
+
+[data-theme="y2k"] .btn-success {
+  background: rgba(110,231,183,0.09);
+  border-color: rgba(110,231,183,0.28);
+  color: #6ee7b7;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+}
+[data-theme="y2k"] .btn-success:hover {
+  background: rgba(110,231,183,0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 0 18px rgba(110,231,183,0.15);
+}
+
+[data-theme="y2k"] .btn-danger {
+  background: rgba(248,113,113,0.09);
+  border-color: rgba(248,113,113,0.28);
+  color: #fca5a5;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+[data-theme="y2k"] .btn-danger:hover {
+  background: rgba(248,113,113,0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 0 18px rgba(248,113,113,0.15);
+}
+
+/* ── FORMS ── */
+[data-theme="y2k"] .form-input,
+[data-theme="y2k"] .form-textarea {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.11);
+  color: var(--ink);
+  backdrop-filter: blur(8px);
+  border-radius: var(--r-sm) !important;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.20);
+}
+[data-theme="y2k"] .form-input::placeholder,
+[data-theme="y2k"] .form-textarea::placeholder {
+  color: rgba(238,238,248,0.25);
+}
+[data-theme="y2k"] .form-input:focus,
+[data-theme="y2k"] .form-textarea:focus {
+  border-color: rgba(129,140,248,0.45);
+  background: rgba(129,140,248,0.04);
+  box-shadow:
+    inset 0 1px 3px rgba(0,0,0,0.20),
+    0 0 0 3px rgba(129,140,248,0.12);
+  transform: translateY(-1px);
+}
+[data-theme="y2k"] .form-label {
+  color: rgba(238,238,248,0.55);
+  font-weight: 700;
+}
+
+/* ── AMOUNTS — clean silver, not gradient ── */
+[data-theme="y2k"] .amount,
+[data-theme="y2k"] .card-amount {
+  color: #e8e8f8;
+  -webkit-text-fill-color: #e8e8f8;
+  background: none;
+}
+[data-theme="y2k"] .amount--muted { color: rgba(238,238,248,0.35); }
+
+/* Completed/released amounts get mint */
+[data-theme="y2k"] .amount--released { color: #6ee7b7; }
+
+/* ── BADGES ── */
+[data-theme="y2k"] .badge {
+  border-radius: 999px;
+  border-width: 1px;
+}
+[data-theme="y2k"] .badge-active {
+  background: rgba(129,140,248,0.09);
+  color: #a5b4fc;
+  border-color: rgba(129,140,248,0.25);
+}
+[data-theme="y2k"] .badge-submitted {
+  background: rgba(252,211,77,0.08);
+  color: #fcd34d;
+  border-color: rgba(252,211,77,0.22);
+}
+[data-theme="y2k"] .badge-completed {
+  background: rgba(110,231,183,0.08);
+  color: #6ee7b7;
+  border-color: rgba(110,231,183,0.22);
+}
+[data-theme="y2k"] .badge-cancelled {
+  background: rgba(248,113,113,0.08);
+  color: #f87171;
+  border-color: rgba(248,113,113,0.22);
+}
+[data-theme="y2k"] .badge-revisionRequested {
+  background: rgba(251,146,60,0.08);
+  color: #fb923c;
+  border-color: rgba(251,146,60,0.22);
+}
+
+/* ── STAMPS — etched glass, never neon ── */
+[data-theme="y2k"] .stamp {
+  border-width: 1px;
+  opacity: 0.80;
+  backdrop-filter: blur(4px);
+}
+[data-theme="y2k"] .stamp--locked {
+  color: rgba(165,180,252,0.70);
+  background: rgba(129,140,248,0.05);
+  border-color: rgba(129,140,248,0.22);
+  text-shadow: none;
+  box-shadow: none;
+}
+[data-theme="y2k"] .stamp--escrow {
+  color: rgba(252,211,77,0.60);
+  background: rgba(252,211,77,0.04);
+  border-color: rgba(252,211,77,0.18);
+}
+[data-theme="y2k"] .stamp--revision {
+  color: rgba(251,146,60,0.65);
+  background: rgba(251,146,60,0.04);
+  border-color: rgba(251,146,60,0.20);
+}
+[data-theme="y2k"] .stamp--released {
+  color: rgba(110,231,183,0.70);
+  background: rgba(110,231,183,0.05);
+  border-color: rgba(110,231,183,0.22);
+}
+[data-theme="y2k"] .stamp--refunded {
+  color: rgba(248,113,113,0.60);
+  background: rgba(248,113,113,0.04);
+  border-color: rgba(248,113,113,0.18);
+}
+
+/* ── LOCK CUE ── */
+[data-theme="y2k"] .locked-cue {
+  color: rgba(238,238,248,0.32);
+}
+[data-theme="y2k"] .locked-cue--released {
+  color: rgba(110,231,183,0.65);
+}
+
+/* ── DEVNET BADGE ── */
+[data-theme="y2k"] .devnet-badge,
+[data-theme="y2k"] .devnet-stamp {
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(238,238,248,0.40) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-style: solid !important;
+  font-family: var(--font-body) !important;
+  transform: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* ── ICON BADGES ── */
+[data-theme="y2k"] .icon-badge {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(8px);
+}
+[data-theme="y2k"] .icon-badge--lav {
+  border-color: rgba(129,140,248,0.22);
+  background: rgba(129,140,248,0.06);
+}
+[data-theme="y2k"] .icon-badge--sage {
+  border-color: rgba(110,231,183,0.22);
+  background: rgba(110,231,183,0.05);
+}
+
+/* ── AVATAR ── */
+[data-theme="y2k"] .avatar {
+  background: rgba(129,140,248,0.10);
+  border: 1px solid rgba(129,140,248,0.25);
+  color: #a5b4fc;
+}
+
+/* ── HEX TEXTURE (footer/hero) ── */
+[data-theme="y2k"] .hex-texture {
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='60' height='52' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='30,2 58,17 58,47 30,62 2,47 2,17' fill='none' stroke='rgba(129,140,248,0.06)' stroke-width='1'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='60' height='52' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='30,2 58,17 58,47 30,62 2,47 2,17' fill='none' stroke='rgba(129,140,248,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 60px 52px;
+  background-position: 0 0, 30px 26px;
+  opacity: 0.6;
+}
+
+/* ── FOOTER ── */
+[data-theme="y2k"] footer {
+  background: rgba(7,7,26,0.60);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+}
+
+/* ── TOAST ── */
+[data-theme="y2k"] .toast {
+  background: rgba(10,10,28,0.88);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.50);
+}
+[data-theme="y2k"] .toast-success {
+  border-color: rgba(110,231,183,0.28);
+}
+[data-theme="y2k"] .toast-error {
+  border-color: rgba(248,113,113,0.28);
+}
+
+/* ── WALLET BUTTON ── */
+[data-theme="y2k"] .wallet-adapter-button {
+  background: rgba(129,140,248,0.10) !important;
+  border: 1px solid rgba(129,140,248,0.28) !important;
+  border-radius: 999px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10) !important;
+  backdrop-filter: blur(8px) !important;
+  color: #c7d2fe !important;
+}
+[data-theme="y2k"] .wallet-adapter-button:hover {
+  background: rgba(129,140,248,0.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 0 18px rgba(129,140,248,0.18) !important;
+}
+
+/* ── THEME TOGGLE BUTTON STYLES ── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+/* Cozy version of the toggle */
+.theme-toggle--cozy {
+  background: var(--butter);
+  color: var(--ink);
+  border: 2px dashed var(--ink);
+}
+.theme-toggle--cozy:hover {
+  transform: translateY(-2px) rotate(-1deg);
+}
+
+/* Y2K version of the toggle — the aqua gel button */
+.theme-toggle--y2k {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #eeeef8;
+  backdrop-filter: blur(8px);
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.theme-toggle--y2k::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 100%);
+  border-radius: 999px 999px 0 0;
+  pointer-events: none;
+}
+.theme-toggle--y2k:hover {
+  background: rgba(255,255,255,0.10);
+  transform: translateY(-2px);
+}
+
+/* The small indicator dot inside the toggle button */
+.theme-toggle__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--lav);
+}
+[data-theme="y2k"] .theme-toggle__dot {
+  background: linear-gradient(135deg, #818cf8, #6ee7b7);
+}
+
+/* ── SCROLLBAR ── */
+[data-theme="y2k"] ::-webkit-scrollbar { width: 5px; }
+[data-theme="y2k"] ::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+[data-theme="y2k"] ::-webkit-scrollbar-thumb {
+  background: rgba(129,140,248,0.25);
+  border-radius: 999px;
+}
+[data-theme="y2k"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(129,140,248,0.40);
+}
+
+/* ── TEXT SELECTION ── */
+[data-theme="y2k"] ::selection {
+  background: rgba(129,140,248,0.22);
+  color: #fff;
+}
+
+/* ── LINKS ── */
+[data-theme="y2k"] a:not(.btn):not([class*="badge"]) {
+  color: #a5b4fc;
+}
+[data-theme="y2k"] a:not(.btn):not([class*="badge"]):hover {
+  color: #c7d2fe;
+}
+
+/* ── VaultSVG illustration tint ── */
+[data-theme="y2k"] .vault-hero-svg [fill="#d6c8ec"],
+[data-theme="y2k"] .vault-hero-svg [fill="var(--lav)"] {
+  fill: rgba(129,140,248,0.40);
+}
+
+/* ── Progress timeline dots ── */
+[data-theme="y2k"] .timeline-dot--done {
+  background: #6ee7b7;
+  border-color: #6ee7b7;
+  box-shadow: 0 0 8px rgba(110,231,183,0.30);
+}
+[data-theme="y2k"] .timeline-dot--current {
+  border-color: #818cf8;
+  box-shadow: 0 0 8px rgba(129,140,248,0.30);
+}
+
+/* ── Mono (wallet address display) ── */
+[data-theme="y2k"] .mono {
+  color: rgba(238,238,248,0.40);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
