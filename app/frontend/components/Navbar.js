@@ -87,11 +87,6 @@ export default function Navbar() {
 
   return (
     <>
-      <div className="umt-banner">
-        <strong>University of Management &amp; Technology (UMT)</strong>, Lahore
-        &nbsp;·&nbsp; Colosseum Frontier Hackathon &nbsp;·&nbsp; Superteam Pakistan
-      </div>
-
       <nav className="navbar">
         {/* Left: Logo — flex:1 so center links stay centred */}
         <Link href="/" className="navbar-logo" style={{ display: "flex", alignItems: "center", gap: "0.45rem", flex: "1 1 0" }}>
