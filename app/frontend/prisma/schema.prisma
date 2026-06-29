@@ -59,7 +59,8 @@ model User {
 
 model Escrow {
   id               String       @id @default(cuid())
-  pda              String       @unique
+  pda              String
+  network          String       @default("devnet")
   clientWallet     String
   freelancerWallet String
   amountLamports   BigInt
@@ -76,9 +77,12 @@ model Escrow {
   client     User @relation("ClientEscrows", fields: [clientWallet], references: [walletAddress])
   freelancer User @relation("FreelancerEscrows", fields: [freelancerWallet], references: [walletAddress])
 
-  @@index([clientWallet])
-  @@index([freelancerWallet])
-  @@index([status])
+  // PDAs are unique per network (same PDA address can exist on devnet and mainnet)
+  @@unique([pda, network])
+  @@index([clientWallet, network])
+  @@index([freelancerWallet, network])
+  @@index([status, network])
+  @@index([network])
 }
 
 model Notification {

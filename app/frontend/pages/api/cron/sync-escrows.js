@@ -12,10 +12,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const result = await syncEscrows();
-    return res.status(200).json({ success: true, result });
+    // Sync both networks on every cron run. Mainnet sync failure is non-fatal.
+    const devnetResult = await syncEscrows("devnet");
+
+    let mainnetResult = null;
+    if (process.env.MAINNET_PROGRAM_ID) {
+      try {
+        mainnetResult = await syncEscrows("mainnet");
+      } catch (mainnetErr) {
+        console.error("Mainnet indexer error (non-fatal):", mainnetErr.message);
+        mainnetResult = { network: "mainnet", error: mainnetErr.message };
+      }
+    }
+
+    return res.status(200).json({ success: true, devnet: devnetResult, mainnet: mainnetResult });
   } catch (err) {
-    console.error("Indexer error:", err.message);
+    console.error("Devnet indexer error:", err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
 }

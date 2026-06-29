@@ -33,6 +33,11 @@
 25. [Search & Marketplace](#25-search--marketplace)
 26. [Reviews & Ratings](#26-reviews--ratings)
 27. [Analytics Dashboard & CSV Export](#27-analytics-dashboard--csv-export)
+28. [Frontend Integration & Polish (Phase 13)](#28-frontend-integration--polish-phase-13)
+29. [SOL/USD Price Display](#29-solusd-price-display)
+30. [Automated Test Suite (Phase 14)](#30-automated-test-suite-phase-14)
+31. [Production Deployment Hardening (Phase 15)](#31-production-deployment-hardening-phase-15)
+32. [Y2K Glass Theme](#32-y2k-glass-theme)
 
 ---
 
@@ -357,7 +362,7 @@ app/frontend/
 │   ├── airdrop-devnet.js ← CLI tool to request Devnet test SOL
 │   ├── test-program.js  ← end-to-end integration tests against Devnet
 │   └── run-indexer.js   ← manual indexer run (node scripts/run-indexer.js)
-├── vercel.json          ← Vercel cron config (every-minute sync-escrows)
+├── vercel.json          ← Vercel cron config (daily sync-escrows at midnight UTC)
 ├── src/hooks/
 │   └── useEscrow.js     ← ALL blockchain calls live here
 ├── src/idl/
@@ -387,11 +392,13 @@ Dead files that existed before Phase 2 cleanup (`create_escrow.rs`, `submit_work
 
 Every page request goes through this file. It does four things:
 
-**1. Loads fonts.** Uses `next/font/google` to load:
-- **Gaegu** — handwritten display font for headings, stamps, decorative labels. Loaded in weights 400 and 700. Assigned to CSS variable `--font-display`.
-- **Nunito** — rounded sans-serif body font for all text, buttons, and numbers. Loaded in weights 400, 600, 700, 800. Assigned to CSS variable `--font-body`.
+**1. Loads fonts.** Uses `next/font/google` to load four typefaces:
+- **Gaegu** — handwritten display font for headings, stamps, decorative labels (Cozy theme). Weights 400 and 700. CSS var `--font-display`.
+- **Nunito** — rounded sans-serif body font (Cozy theme). Weights 400, 600, 700, 800. CSS var `--font-body`.
+- **Space Grotesk** — geometric sans-serif display font (Y2K Glass theme). Weights 400–700. CSS var `--font-display-y2k`.
+- **Inter** — the industry-standard UI body font (Y2K Glass theme). Weights 400–700. CSS var `--font-body-y2k`.
 
-Both fonts are loaded via Next.js's font optimization (no layout shift, self-hosted from Google). The CSS variables are applied to the root `<div>` that wraps everything.
+All four fonts are self-hosted via Next.js font optimization (no layout shift, no external Google DNS lookup at runtime). The CSS variables are applied to the root `<div>` that wraps everything. Under `[data-theme="y2k"]`, `globals.css` overrides `--font-display` and `--font-body` to reference the Y2K variables, so the font switch is purely CSS — no JS needed.
 
 **2. Sets up Solana providers.** Three context providers wrap every page:
 - `ConnectionProvider` — establishes a WebSocket/HTTP connection to Solana Devnet at `https://api.devnet.solana.com`.
@@ -581,17 +588,16 @@ Any SVG anywhere on the page can apply this filter with `style={{ filter: "url(#
 
 ### `components/Navbar.js` — The Navigation Bar
 
-A UMT banner above the main nav. The navbar contains:
+A three-section flex layout (logo left · nav center · controls right). The navbar contains:
 - The FreelancePay logo + text (links to home)
-- Links to Home, How It Works, Client, Freelancer
-- The **"Practice Mode"** stamp (previously called "DEVNET" badge):
-  ```jsx
-  <span className="devnet-badge devnet-stamp">Practice Mode</span>
-  ```
-  The `devnet-stamp` class adds `border-style: dashed`, butter background, Gaegu font, and a slight rotation — making it look like a literal rubber stamp on the nav rather than a static label.
-- The Phantom Connect button
+- Center nav links: Home, How It Works, Marketplace, Jobs; Client / Freelancer / Analytics when wallet connected
+- The **"DEVNET" badge** — a pill chip to the right of the nav links
+- **`ThemeToggle`** button (leftmost item in the right controls group) — switches between Cozy and Y2K Glass themes
+- Notification bell (shown when authenticated) — dropdown with 5 most-recent notifications
+- User avatar + wallet dropdown (when authenticated) or `WalletMultiButton` (when not connected)
+- Hamburger menu for mobile
 
-Active link highlighting is done by comparing `router.pathname` to each link's `href`.
+Active link highlighting is done by comparing `router.pathname` to each link's `href`. `WalletMultiButton` is dynamically imported `{ ssr: false }` to avoid hydration errors.
 
 ---
 
@@ -1965,11 +1971,12 @@ Loads `.env.local`, calls `syncEscrows()`, prints result, disconnects Prisma, ex
 ```json
 {
   "framework": "nextjs",
-  "crons": [{ "path": "/api/cron/sync-escrows", "schedule": "* * * * *" }]
+  "crons": [{ "path": "/api/cron/sync-escrows", "schedule": "0 0 * * *" }],
+  "functions": { "pages/api/sse/notifications.js": { "maxDuration": 300 } }
 }
 ```
 
-`* * * * *` = every minute.
+`0 0 * * *` = once daily at midnight UTC. Previously `* * * * *` (every minute), but Vercel Hobby plan rejects sub-daily crons and silently blocked all GitHub auto-deploys for 6 days until this was fixed.
 
 ### Known Gap: Closed Accounts
 
@@ -2890,6 +2897,264 @@ CSS grid with 5 columns: `72px 1fr 72px 90px 80px`. Header row (`an-activity-hea
 
 ---
 
-*Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel. Built for Colosseum Frontier Hackathon by University of Management & Technology (UMT), Lahore, Pakistan.*
+## 28. Frontend Integration & Polish (Phase 13)
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` every-minute cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32.*
+Phase 13 connected the frontend to the full backend stack built in Phases 3–11 and polished the overall UX.
+
+### Settings Page (`/settings`)
+
+`pages/settings.js` — Protected page (redirects to `/` if not authenticated). Allows users to update their `User` record in PostgreSQL:
+
+- **Display name** — free-text field stored in `User.displayName`; shown in notification dropdowns and the Navbar avatar
+- **Skills** — multi-tag input; stored as `String[]` in `User.skills`; used by `/api/search/freelancers` for matching
+- **Hourly rate** — stored in `User.hourlyRate`; shown on marketplace freelancer cards
+- **Bio** — short text stored in `User.bio`
+
+Saves via `PATCH /api/users/me` (created in Phase 13). The Navbar avatar shows the first character of `displayName` if set, falling back to the wallet address initial.
+
+### SOL Balance Display
+
+The Navbar and/or dashboard pages fetch the connected wallet's SOL balance from Solana devnet using `connection.getBalance(publicKey)` and display it formatted as `0.000 SOL`. This is a read-only RPC call — no signing required.
+
+### `useProfile` Hook
+
+`hooks/useProfile.js` — fetches `GET /api/users/[wallet]` and caches the result. Used by `/profile/[walletAddress]`, the Navbar (for display name), and settings page (for initial form values).
+
+### Escrow Detail Enhancements
+
+`pages/escrow/[id].js` updated to:
+- Show counterparty's `displayName` instead of raw truncated wallet when available
+- Pull `freelancerName` from the `Escrow` DB record (already resolved by indexer) rather than re-fetching from the `User` table on the client
+
+---
+
+## 29. SOL/USD Price Display
+
+Real-time SOL price in USD is fetched from the CoinGecko public API on the client side.
+
+### Implementation
+
+`hooks/useSolPrice.js` — calls `https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd` on mount, polling every 60 seconds. Returns `{ solPriceUsd, loading }`.
+
+The hook is used by dashboard pages and the escrow detail page to show amounts as both SOL and approximate USD:
+
+```
+2.50 SOL ≈ $247.30 USD
+```
+
+USD value is computed client-side: `amountSOL * solPriceUsd`. The price is displayed with a "~" prefix to indicate it is approximate. No price data is stored in the database — it is always fetched fresh.
+
+### Caveat
+
+CoinGecko's free tier is rate-limited (~50 calls/minute). If the app is under heavy load or the call fails, `solPriceUsd` falls back to `null` and the USD display is hidden gracefully.
+
+---
+
+## 30. Automated Test Suite (Phase 14)
+
+Phase 14 added a comprehensive JavaScript test suite covering the API layer, hooks, and utility functions.
+
+### Test Stack
+
+- **Jest** — test runner; configured in `jest.config.js` (root) and `babel.jest.config.js` (renamed from `babel.config.js` to avoid conflicting with Next.js's own Babel config during `next build`)
+- **@testing-library/react** — hook and component testing
+- **msw (Mock Service Worker)** — intercepts `fetch` calls at the network level for API route tests
+- **Playwright** — end-to-end tests in `e2e/` directory (browser-driven)
+
+### Test Coverage
+
+`__tests__/` directory structure:
+```
+__tests__/
+├── api/
+│   ├── escrows.test.js       — GET/POST /api/escrows, pagination, auth gating
+│   ├── reviews.test.js       — POST /api/reviews, duplicate prevention, rating recalculation
+│   ├── notifications.test.js — mark-as-read, mark-all-read endpoints
+│   └── stats.test.js         — /api/stats cache behavior
+├── hooks/
+│   ├── useAuth.test.js       — sign-in/sign-out flow, cookie handling
+│   ├── useNotifications.test.js — SSE reconnect, markAsRead optimistic update
+│   └── useSolPrice.test.js   — CoinGecko fetch, fallback on error
+├── lib/
+│   ├── indexer.test.js       — syncEscrows status transitions, notification creation
+│   └── email.test.js         — template rendering, unsubscribe token injection
+└── utils/
+    └── ipfs.test.js          — parseSubmission JSON + legacy plain-text format
+```
+
+`e2e/` directory (Playwright):
+```
+e2e/
+├── auth.spec.js       — wallet connect → challenge → sign → JWT cookie set
+├── escrow-flow.spec.js — full happy path: create → submit → approve
+└── marketplace.spec.js — search filters, freelancer card navigation
+```
+
+### Key Testing Decisions
+
+**`babel.config.js` renamed to `babel.jest.config.js`** — Next.js 16 reads `babel.config.js` at build time. Having it present caused `next build` to use Jest's Babel transform instead of SWC, breaking production builds. Renaming and pointing Jest at it via `transform` in `jest.config.js` isolates the two.
+
+**No database mocking** — API tests use a real Prisma client pointed at a test Supabase branch (set via `DATABASE_URL_TEST`). This avoids mock/prod divergence at the cost of slower tests.
+
+**Playwright tests require a running dev server** — documented in `package.json` scripts: `yarn test:e2e` starts the dev server automatically via `webServer` config in `playwright.config.js`.
+
+---
+
+## 31. Production Deployment Hardening (Phase 15)
+
+Phase 15 addressed production reliability, security hardening, and the Vercel deployment pipeline.
+
+### Vercel Deployment Pipeline Fix
+
+**Root cause of 6-day deploy outage:** `vercel.json` contained `"schedule": "* * * * *"` (every minute). Vercel's Hobby plan silently rejects any deployment where the cron runs more than once per day. Every GitHub push to `main` was rejected — with no error notification sent to the developer.
+
+**Fix:** Changed schedule to `"0 0 * * *"` (daily at midnight UTC). The next GitHub push after this fix triggered a successful Vercel build (42 seconds, `● Ready`).
+
+**Lesson:** Vercel does not email or dashboard-notify on deployment rejections caused by plan violations. The only indication is the absence of a new deployment in the Vercel dashboard.
+
+### `vercel.json` Final State
+
+```json
+{
+  "framework": "nextjs",
+  "crons": [{ "path": "/api/cron/sync-escrows", "schedule": "0 0 * * *" }],
+  "functions": { "pages/api/sse/notifications.js": { "maxDuration": 300 } }
+}
+```
+
+`maxDuration: 300` is required for the SSE endpoint — without it, Vercel's default 10-second serverless timeout would kill long-lived SSE connections.
+
+### `.vercelignore`
+
+Created `app/frontend/.vercelignore` to exclude large directories from CLI uploads:
+
+```
+node_modules
+.next
+coverage
+e2e
+__tests__
+scripts
+*.test.js
+*.spec.js
+babel.jest.config.js
+jest.config.js
+jest.setup.js
+playwright.config.js
+```
+
+Without this, CLI deploys attempt to upload `node_modules` (~1 GB) and `.next` (~900 MB), exceeding the Hobby plan's 5,000-file upload limit.
+
+### Security Hardening
+
+- **`CRON_SECRET` rotation** — the Bearer token protecting `/api/cron/sync-escrows` was rotated and set as a Vercel environment variable
+- **`PINATA_JWT` confirmed server-side only** — audit confirmed no client-side import path reaches `process.env.PINATA_JWT`; it only appears in `pages/api/upload.js`
+- **`NEXTAUTH_SECRET` / `JWT_SECRET`** — confirmed present in Vercel env vars; never committed to git
+- **`.gitignore` covers all secrets** — `.env*`, `scripts/keypairs/`, `*.json` keypair files all excluded
+
+### `babel.config.js` Removal from Git
+
+`babel.config.js` had been renamed to `babel.jest.config.js` in Phase 14 but was never staged for deletion. Phase 15 committed the deletion (`git rm babel.config.js`), resolving a lingering inconsistency where `next build` on Vercel was using Babel instead of SWC.
+
+---
+
+## 32. Y2K Glass Theme
+
+A second visual theme — **Y2K Glass** — was added alongside the existing Cozy theme. The two themes coexist via a CSS `data-theme` attribute strategy: `<html data-theme="cozy">` (default) or `<html data-theme="y2k">`.
+
+### Design Tokens
+
+| Token | Cozy | Y2K Glass |
+|---|---|---|
+| Background | `#faf7f0` (warm cream) | `#07071a` (deep dark navy) |
+| Primary accent | `#9945FF` (Solana purple) | `#818cf8` (periwinkle) |
+| Success / completed | `--green` (`#14F195`) | `#6ee7b7` (mint — completed states only) |
+| Card | `#fff` + cream shadow | `rgba(255,255,255,0.04)` frosted glass |
+| Card border | solid `--border` | iridescent prism gradient (CSS mask technique) |
+| Navbar | cream / white | `rgba(7,7,26,0.7)` with `backdrop-filter: blur(16px)` |
+| Button radius | `8px` | `999px` (full pill) |
+| Display font | Gaegu (handwritten) | Space Grotesk (geometric sans) |
+| Body font | Nunito (rounded sans) | Inter (clean UI sans) |
+
+No neon, no stars, no scanlines — the design is restrained glass morphism, not retro kitsch.
+
+### Iridescent Prism Card Border
+
+Cards in Y2K mode get a multi-stop gradient border using a CSS mask composite technique:
+
+```css
+[data-theme="y2k"] .card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(129,140,248,0.6), rgba(167,139,250,0.4),
+    rgba(110,231,183,0.3), rgba(129,140,248,0.5));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+```
+
+The `mask-composite: exclude` trick renders the gradient only at the 1px border edge — the card content area is unaffected.
+
+### Anti-Flash Script
+
+`pages/_document.js` contains an inline `<script>` in `<Head>` that reads `localStorage` synchronously before React hydrates:
+
+```js
+(function(){
+  try {
+    var t = localStorage.getItem('fp_theme') || 'cozy';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch(e) {}
+})();
+```
+
+This prevents the white flash that would otherwise occur if the JS bundle loaded after the first CSS paint.
+
+### New Files
+
+**`hooks/useTheme.js`** — manages theme state, persists to `localStorage` under key `fp_theme`, applies `data-theme` to `<html>`. Returns `{ theme, toggleTheme, isY2K }`.
+
+**`components/ThemeToggle.js`** — button component with two visual variants:
+- Cozy mode: dashed butter pill labeled "Y2K Glass"
+- Y2K mode: frosted glass pill labeled "🌸 Cozy"
+
+### Font Loading (`_app.js`)
+
+Two additional `next/font/google` font instances added alongside the existing Gaegu/Nunito:
+
+```js
+const inter = Inter({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-body-y2k",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-display-y2k",
+  display: "swap",
+});
+```
+
+All four font variables are applied to the root `<div>`. The Y2K CSS block then overrides `--font-body` and `--font-display` to reference the Y2K variables — the Cozy theme fonts are completely untouched.
+
+### Limitations
+
+- The cron indexer still runs only once daily — real-time sync is limited to the SSE stream, which does not survive Vercel's serverless process isolation across function instances in production.
+- Y2K theme is purely cosmetic; it does not affect any on-chain or API logic.
+
+---
+
+*Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel (GitHub auto-deploy from `main` branch).*
+
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` daily cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel; `maxDuration: 300` in vercel.json), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32. Phase 13 added: frontend integration & polish — settings page (`/settings`) with display name, skills, hourly rate, bio; SOL balance display in Navbar; `useProfile` hook; escrow detail counterparty name resolution from DB. Phase 14 added: automated test suite — Jest + @testing-library/react + msw for API/hook/lib/utils unit tests; Playwright for end-to-end auth and escrow-flow tests; `babel.config.js` renamed to `babel.jest.config.js` to isolate Jest's Babel config from Next.js SWC. Phase 15 added: production deployment hardening — fixed 6-day Vercel deploy outage caused by sub-daily cron rejection (changed `* * * * *` → `0 0 * * *`), created `.vercelignore` to exclude node_modules and build artifacts from CLI uploads, rotated `CRON_SECRET`, committed `babel.config.js` deletion, confirmed all secrets are server-side only. Y2K Glass theme added: `data-theme` attribute switching, anti-flash inline script in `_document.js`, `hooks/useTheme.js`, `components/ThemeToggle.js`, Inter + Space Grotesk fonts via `next/font/google`, ~280 lines of Y2K CSS (frosted glass cards, iridescent prism border, pill buttons, periwinkle accent, Space Grotesk / Inter fonts).*

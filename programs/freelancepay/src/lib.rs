@@ -61,6 +61,11 @@ pub mod freelancepay {
         escrow_index: u64,
     ) -> Result<()> {
         require!(amount > 0, ErrorCode::InvalidStatus);
+        // Reject zero-address freelancer (no one owns that keypair — funds would be unrecoverable)
+        require!(freelancer != Pubkey::default(), ErrorCode::InvalidStatus);
+        // On-chain length guards — #[max_len(N)] allocates space but does not validate at runtime
+        require!(title.len() <= 100, ErrorCode::InvalidStatus);
+        require!(description.len() <= 500, ErrorCode::InvalidStatus);
         require!(
             escrow_index == ctx.accounts.client_profile.escrow_count,
             ErrorCode::InvalidStatus
@@ -107,6 +112,7 @@ pub mod freelancepay {
                 || escrow.status == EscrowStatus::RevisionRequested,
             ErrorCode::InvalidStatus
         );
+        require!(work_description.len() <= 500, ErrorCode::InvalidStatus);
 
         escrow.work_submission = work_description;
         escrow.status = EscrowStatus::Submitted;
@@ -148,6 +154,7 @@ pub mod freelancepay {
         let escrow = &mut ctx.accounts.escrow;
 
         require!(escrow.status == EscrowStatus::Submitted, ErrorCode::InvalidStatus);
+        require!(message.len() <= 300, ErrorCode::InvalidStatus);
 
         escrow.revision_note = message;
         escrow.status = EscrowStatus::RevisionRequested;

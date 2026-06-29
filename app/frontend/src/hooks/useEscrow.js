@@ -1,10 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import idl from "../idl/freelancepay.json";
+import { useNetworkContext } from "@/pages/_app";
 
-const PROGRAM_ID = new PublicKey("5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX");
 const ESCROW_SEED = Buffer.from("escrow");
 const CLIENT_PROFILE_SEED = Buffer.from("client_profile");
 
@@ -15,30 +15,38 @@ function getStatus(statusObj) {
 export function useEscrow() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const { networkConfig, isMainnet } = useNetworkContext();
+
+  const programId = useMemo(
+    () => new PublicKey(networkConfig.programId),
+    [networkConfig.programId]
+  );
 
   const getProgram = useCallback(() => {
     if (!wallet.publicKey || !wallet.signTransaction) throw new Error("Wallet not connected");
     const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
-    return new Program(idl, provider);
-  }, [connection, wallet]);
+    // Override IDL address so Anchor targets the correct program on each network
+    const networkIdl = { ...idl, address: networkConfig.programId };
+    return new Program(networkIdl, provider);
+  }, [connection, wallet, networkConfig.programId]);
 
   const deriveClientProfilePDA = useCallback((clientPubkey) => {
     const [pda] = PublicKey.findProgramAddressSync(
       [CLIENT_PROFILE_SEED, clientPubkey.toBytes()],
-      PROGRAM_ID
+      programId
     );
     return pda;
-  }, []);
+  }, [programId]);
 
   const deriveEscrowPDA = useCallback((clientPubkey, escrowIndex) => {
     const indexBuf = Buffer.alloc(8);
     indexBuf.writeBigUInt64LE(BigInt(escrowIndex));
     const [pda] = PublicKey.findProgramAddressSync(
       [ESCROW_SEED, clientPubkey.toBytes(), indexBuf],
-      PROGRAM_ID
+      programId
     );
     return pda;
-  }, []);
+  }, [programId]);
 
   const initializeClientProfile = useCallback(async () => {
     try {
@@ -60,11 +68,19 @@ export function useEscrow() {
   }, [getProgram, deriveClientProfilePDA, wallet.publicKey]);
 
   const createEscrow = useCallback(async (title, description, freelancerAddress, amountInSOL) => {
+    // Mainnet beta transaction cap
+    const maxSOL = parseFloat(process.env.NEXT_PUBLIC_MAINNET_MAX_SOL || "5");
+    if (isMainnet && amountInSOL > maxSOL) {
+      return {
+        success: false,
+        error: `Maximum escrow amount is ${maxSOL} SOL during beta. This limit will be raised after the beta period.`,
+      };
+    }
+
     try {
       const program = getProgram();
       const profilePDA = deriveClientProfilePDA(wallet.publicKey);
 
-      // Initialize profile if it doesn't exist yet
       let profile = null;
       try {
         profile = await program.account.clientProfile.fetch(profilePDA);
@@ -93,7 +109,7 @@ export function useEscrow() {
       console.error("createEscrow:", err);
       return { success: false, error: err.message };
     }
-  }, [getProgram, deriveClientProfilePDA, deriveEscrowPDA, initializeClientProfile, wallet.publicKey]);
+  }, [getProgram, deriveClientProfilePDA, deriveEscrowPDA, initializeClientProfile, wallet.publicKey, isMainnet]);
 
   const submitWork = useCallback(async (escrowPDA, workDescription) => {
     try {
@@ -167,7 +183,6 @@ export function useEscrow() {
   const fetchMyEscrowsAsClient = useCallback(async () => {
     try {
       const program = getProgram();
-      // offset 8 = after discriminator; client pubkey is the first field
       const accounts = await program.account.escrowAccount.all([
         { memcmp: { offset: 8, bytes: wallet.publicKey.toBase58() } },
       ]);
@@ -181,7 +196,6 @@ export function useEscrow() {
   const fetchMyEscrowsAsFreelancer = useCallback(async () => {
     try {
       const program = getProgram();
-      // offset 40 = 8 (discriminator) + 32 (client pubkey)
       const accounts = await program.account.escrowAccount.all([
         { memcmp: { offset: 8 + 32, bytes: wallet.publicKey.toBase58() } },
       ]);
@@ -217,6 +231,8 @@ export function useEscrow() {
     deriveEscrowPDA,
     connected: !!wallet.publicKey,
     publicKey: wallet.publicKey,
+    isMainnet,
+    networkConfig,
   };
 }
 

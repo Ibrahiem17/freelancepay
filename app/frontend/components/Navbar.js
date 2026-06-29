@@ -10,6 +10,7 @@ import {
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useAuthContext } from "@/pages/_app";
 import useNotifications from "@/hooks/useNotifications";
+import useNetwork from "@/hooks/useNetwork";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const WalletMultiButton = dynamic(
@@ -45,6 +46,7 @@ export default function Navbar() {
   const { connected } = useWallet();
   const auth = useAuthContext();
   const user = auth?.user ?? null;
+  const { network, isMainnet, setNetwork } = useNetwork();
 
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications({
     enabled: !!user,
@@ -108,6 +110,25 @@ export default function Navbar() {
         <div className="navbar-right">
 
           <ThemeToggle />
+
+          {/* Network toggle */}
+          <button
+            className={`network-toggle ${isMainnet ? "network-toggle--mainnet" : "network-toggle--devnet"}`}
+            onClick={() => setNetwork(isMainnet ? "devnet" : "mainnet")}
+            title={isMainnet ? "Switch to Practice Mode" : "Switch to Real Money Mode"}
+          >
+            {isMainnet ? (
+              <>
+                <span className="network-toggle__dot network-toggle__dot--pulse" />
+                ⚡ Real SOL
+              </>
+            ) : (
+              <>
+                <span className="network-toggle__dot" />
+                Practice Mode
+              </>
+            )}
+          </button>
 
           {/* Notification bell */}
           {user && (

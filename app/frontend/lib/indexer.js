@@ -11,7 +11,6 @@ const {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Returns displayName or a truncated wallet like "HbkHJY...K1Tf"
 async function getDisplayName(walletAddress) {
   try {
     const user = await prisma.user.findUnique({
@@ -23,8 +22,6 @@ async function getDisplayName(walletAddress) {
   return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
 }
 
-// Ensures a User row exists for the wallet (creates a minimal one if absent).
-// Required because Escrow and Notification both FK into User.walletAddress.
 async function ensureUser(walletAddress) {
   await prisma.user.upsert({
     where:  { walletAddress },
@@ -46,12 +43,11 @@ const TRANSITION_MAP = {
 async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
   const transitionKey = `${oldStatus}->${newStatus}`;
   const rule = TRANSITION_MAP[transitionKey];
-  if (!rule) return; // untracked transition
+  if (!rule) return;
 
   const recipientWallet =
     rule.recipient === "CLIENT" ? escrow.clientWallet : escrow.freelancerWallet;
 
-  // Freelancer may not exist in DB yet if the escrow was created before auth was wired
   await ensureUser(recipientWallet);
 
   const freelancerName = await getDisplayName(escrow.freelancerWallet);
@@ -95,8 +91,6 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
     },
   });
 
-  // Push to any open SSE connections for this wallet.
-  // Fails silently — SSE emit errors must never break the indexer.
   try {
     emitNotification(recipientWallet, {
       id:        notification.id,
@@ -109,7 +103,6 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
     });
   } catch {}
 
-  // Send email notification. Failures are silently swallowed.
   try {
     switch (transitionKey) {
       case "ACTIVE->SUBMITTED":
@@ -129,10 +122,10 @@ async function createStatusChangeNotification(escrow, oldStatus, newStatus) {
   } catch {}
 }
 
-// ─── Main sync ────────────────────────────────────────────────────────────────
+// ─── Main sync (network-aware) ────────────────────────────────────────────────
 
-async function syncEscrows() {
-  const onChain = await fetchAllEscrows();
+async function syncEscrows(network = "devnet") {
+  const onChain = await fetchAllEscrows(network);
 
   let created = 0;
   let updated = 0;
@@ -145,14 +138,13 @@ async function syncEscrows() {
     const workSubmission = account.workSubmission?.trim() || null;
     const revisionNote   = account.revisionNote?.trim()   || null;
 
-    // Ensure FK rows exist before upserting Escrow
     await ensureUser(account.client);
     await ensureUser(account.freelancer);
 
-    const existing = await prisma.escrow.findUnique({ where: { pda } });
+    // Look up existing escrow by PDA AND network to avoid cross-network collisions
+    const existing = await prisma.escrow.findFirst({ where: { pda, network } });
 
     if (!existing) {
-      // ── New escrow ────────────────────────────────────────────────────────
       await prisma.escrow.create({
         data: {
           pda,
@@ -164,12 +156,12 @@ async function syncEscrows() {
           workSubmission,
           revisionNote,
           status:           newStatus,
+          network,
           onChainCreatedAt,
           lastSyncedAt:     new Date(),
         },
       });
       created++;
-      // Email the freelancer about their new contract (silently)
       try {
         await sendEscrowCreatedEmail({
           pda,
@@ -180,12 +172,11 @@ async function syncEscrows() {
         });
       } catch {}
     } else {
-      // ── Existing escrow — check for status change ─────────────────────────
       const oldStatus = existing.status;
       const statusChanged = oldStatus !== newStatus;
 
       await prisma.escrow.update({
-        where: { pda },
+        where: { id: existing.id },
         data: {
           status:        newStatus,
           workSubmission,
@@ -215,9 +206,9 @@ async function syncEscrows() {
 
   const synced = onChain.length;
   console.log(
-    `Synced ${synced} escrows — ${created} new, ${updated} updated, ${statusChanges} status changes`
+    `[${network}] Synced ${synced} escrows — ${created} new, ${updated} updated, ${statusChanges} status changes`
   );
-  return { synced, created, updated, statusChanges };
+  return { network, synced, created, updated, statusChanges };
 }
 
 module.exports = { syncEscrows };
