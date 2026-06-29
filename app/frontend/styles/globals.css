@@ -1842,6 +1842,26 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   --r-sm:   14px;
 }
 
+/* ── TYPOGRAPHY ── */
+[data-theme="y2k"] h1,
+[data-theme="y2k"] h2,
+[data-theme="y2k"] h3,
+[data-theme="y2k"] h4,
+[data-theme="y2k"] .caption {
+  font-family: var(--font-display-y2k), 'Space Grotesk', system-ui, sans-serif !important;
+}
+[data-theme="y2k"] body,
+[data-theme="y2k"] p,
+[data-theme="y2k"] span,
+[data-theme="y2k"] a,
+[data-theme="y2k"] button,
+[data-theme="y2k"] input,
+[data-theme="y2k"] label,
+[data-theme="y2k"] select,
+[data-theme="y2k"] textarea {
+  font-family: var(--font-body-y2k), 'Inter', system-ui, sans-serif;
+}
+
 /* ── BODY ── */
 [data-theme="y2k"] body {
   background-color: #07071a;

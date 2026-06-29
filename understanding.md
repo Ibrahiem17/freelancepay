@@ -38,6 +38,10 @@
 30. [Automated Test Suite (Phase 14)](#30-automated-test-suite-phase-14)
 31. [Production Deployment Hardening (Phase 15)](#31-production-deployment-hardening-phase-15)
 32. [Y2K Glass Theme](#32-y2k-glass-theme)
+33. [Security Audit (Phase 16.1)](#33-security-audit-phase-161)
+34. [Dual Network Architecture (Phase 16.4)](#34-dual-network-architecture-phase-164)
+35. [Mainnet Safety System (Phase 16.5)](#35-mainnet-safety-system-phase-165)
+36. [Legal Pages (Phase 16.6)](#36-legal-pages-phase-166)
 
 ---
 
@@ -3155,6 +3159,335 @@ All four font variables are applied to the root `<div>`. The Y2K CSS block then 
 
 ---
 
+---
+
+## 33. Security Audit (Phase 16.1)
+
+### Why a Security Audit Before Mainnet?
+
+Before real SOL can be locked in the smart contract, the code must be reviewed for vulnerabilities. A bug that allows funds to be stolen, locked permanently, or drained without authorisation would be catastrophic and irreversible on-chain. Phase 16.1 covered an internal audit checklist, automated tooling, and applied fixes.
+
+### Audit Scope
+
+The audit covered `programs/freelancepay/src/lib.rs` — the entire on-chain Rust/Anchor program. The frontend was not in scope (it cannot move on-chain funds by itself; all authority lives in the smart contract).
+
+### Findings Summary
+
+A `SECURITY_REVIEW.md` file was created at the repo root with full documentation. Seven findings were recorded:
+
+| ID | Severity | Description | Status |
+|----|----------|-------------|--------|
+| F1 | MEDIUM | Zero-address freelancer — `Pubkey::default()` accepted as freelancer; funds would be locked permanently in an unspendable address | **FIXED** |
+| F2 | LOW | No dispute resolution / admin escape hatch — funds can be locked forever if both parties are unresponsive | Accepted (documented limitation) |
+| F3 | LOW | `#[max_len(N)]` does not add a runtime length check — oversized strings cause a Borsh serialization abort instead of a clean error | **FIXED** |
+| F4 | INFO | Amounts use `u64` lamports — no overflow risk with Solana's supply, safe | Accepted |
+| F5 | INFO | `cancel_escrow` is client-only — freelancer cannot cancel even if client disappears | Accepted (documented limitation) |
+| F6 | INFO | No re-entrancy risk — Solana's BPF runtime prevents cross-program invoke loops | Accepted |
+| F7 | INFO | No integer underflow in `approve_work` `try_sub` — already safe | Accepted |
+
+### Fixes Applied (`lib.rs`)
+
+**F1 — Zero-address freelancer guard** (in `create_escrow`):
+```rust
+require!(freelancer != Pubkey::default(), ErrorCode::InvalidStatus);
+```
+Without this, a careless or malicious client could create an escrow with an all-zeros freelancer address. No private key exists for that address, so the funds would be trapped forever.
+
+**F3 — Explicit string length guards:**
+```rust
+// create_escrow
+require!(title.len() <= 100, ErrorCode::InvalidStatus);
+require!(description.len() <= 500, ErrorCode::InvalidStatus);
+
+// submit_work (after status check)
+require!(work_description.len() <= 500, ErrorCode::InvalidStatus);
+
+// request_revision (after status check)
+require!(message.len() <= 300, ErrorCode::InvalidStatus);
+```
+Anchor's `#[max_len(N)]` attribute only reserves account space — it does **not** validate that the caller's input fits within that space at runtime. An oversized string causes Borsh to abort with an opaque error. These `require!` guards produce a clean, readable error instead.
+
+### Automated Tooling
+
+- **Clippy** (`cargo clippy --target bpfel-unknown-unknown`) — no warnings after fixes.
+- **Manual checklist** — sections A through H: signer checks, PDA derivation, arithmetic, account ownership, account closing safety, re-entrancy, field validation, and status transitions. All passed or were fixed.
+
+### `SECURITY_REVIEW.md`
+
+Full audit report stored in the repo root. Sections:
+- A: Signer validation checks
+- B: PDA seed derivation verification
+- C: Arithmetic overflow / underflow
+- D: Account ownership and type checking
+- E: Account closing and lamport return
+- F: Re-entrancy
+- G: Input field validation
+- H: State machine / status transitions
+- Findings table (F1-F7)
+- Community review checklist (for posting to Solana Discord / Anchor GitHub Discussions / r/solana)
+- Automated tool results section
+
+---
+
+## 34. Dual Network Architecture (Phase 16.4)
+
+### The Problem
+
+FreelancePay was originally devnet-only — every RPC URL, program ID, and database row was hard-coded for devnet. Moving to mainnet required a way to switch networks without maintaining two entirely separate codebases.
+
+### Solution: Network Config Layer
+
+**`app/frontend/lib/networkConfig.js`** is the single source of truth:
+
+```js
+export const NETWORKS = {
+  devnet: {
+    name: "Practice Mode",
+    cluster: "devnet",
+    rpcUrl: process.env.NEXT_PUBLIC_DEVNET_RPC || "https://api.devnet.solana.com",
+    programId: process.env.NEXT_PUBLIC_DEVNET_PROGRAM_ID || "5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX",
+    explorerBase: "https://explorer.solana.com/?cluster=devnet",
+    isMainnet: false,
+    warningMessage: "You are using Practice Mode. SOL here has no real value.",
+    color: "var(--sage)",
+  },
+  mainnet: {
+    name: "Real Money",
+    cluster: "mainnet-beta",
+    rpcUrl: process.env.NEXT_PUBLIC_MAINNET_RPC || "https://api.mainnet-beta.solana.com",
+    programId: process.env.NEXT_PUBLIC_MAINNET_PROGRAM_ID || "5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX",
+    explorerBase: "https://explorer.solana.com",
+    isMainnet: true,
+    warningMessage: "⚠️ You are using Real SOL. All transactions are irreversible.",
+    color: "var(--peach)",
+  },
+};
+export const DEFAULT_NETWORK = "devnet";
+```
+
+All `NEXT_PUBLIC_*` env vars are browser-safe. The server-side reader (`lib/solana-reader.js`) uses non-prefixed vars (`MAINNET_RPC_URL`, `MAINNET_PROGRAM_ID`) that are never exposed to the browser.
+
+### NetworkContext (`_app.js`)
+
+The currently selected network is stored in `localStorage` under key `fp_network`. On app boot, `getStoredNetwork()` reads it synchronously before first render (SSR-safe with a `typeof window` guard).
+
+`NetworkContext` exposes `{ network, networkConfig, setNetwork, isMainnet }` to the entire component tree. `setNetwork` intercepts the mainnet target and shows the warning modal instead of switching immediately (see Section 35).
+
+**`app/frontend/hooks/useNetwork.js`** — a thin wrapper:
+```js
+import { useNetworkContext } from "@/pages/_app";
+export default function useNetwork() {
+  return useNetworkContext();
+}
+```
+
+**Key implementation detail:** `ConnectionProvider` from `@solana/wallet-adapter-react` is given `key={network}`. When the network changes, React unmounts and remounts the entire wallet adapter subtree with the new RPC URL. This forces the underlying `Connection` object to reconnect rather than silently using the old endpoint.
+
+### `useEscrow.js` — Network-Aware Hook
+
+Several changes made the hook network-aware:
+- `programId` is now a `useMemo` computed from `networkConfig.programId` rather than a module-level constant.
+- `getProgram()` spreads the IDL and overrides its address field: `{ ...idl, address: networkConfig.programId }`. Without this, Anchor reads the program address from the IDL's `address` field — which always contains the devnet address — and the wrong program would be targeted on mainnet.
+- PDA derivation functions (`deriveClientProfilePDA`, `deriveEscrowPDA`) receive `programId` as a parameter so they target the correct program on each network.
+
+### `lib/solana-reader.js` — Server-Side Reader
+
+Updated from single-network to dual-network:
+- `RPC_URLS` and `PROGRAM_IDS` objects keyed by `"devnet"` / `"mainnet"`.
+- `getReadonlyProvider(network)`, `getProgram(network)`, `fetchAllEscrows(network)` — all accept a `network` parameter and default to `"devnet"`.
+- Throws clearly if `PROGRAM_IDS[network]` is not configured (mainnet program ID not yet set).
+
+### `lib/indexer.js` — Network-Aware Upsert
+
+`syncEscrows(network = "devnet")` signature added. All Prisma queries now include the `network` field:
+- `findFirst({ where: { pda, network } })` — looks up existing rows by the composite key.
+- `create({ data: { ...fields, network } })` — stores the network with every new row.
+- Log lines are prefixed with `[devnet]` or `[mainnet]`.
+
+### `/api/cron/sync-escrows.js` — Dual Sync
+
+The cron endpoint now syncs both networks:
+```js
+const devnetResult = await syncEscrows("devnet");
+let mainnetResult = null;
+if (process.env.MAINNET_PROGRAM_ID) {
+  try {
+    mainnetResult = await syncEscrows("mainnet");
+  } catch (mainnetErr) {
+    console.error("Mainnet indexer error (non-fatal):", mainnetErr.message);
+    mainnetResult = { network: "mainnet", error: mainnetErr.message };
+  }
+}
+```
+Mainnet sync failure is non-fatal — it is caught, logged, and returned in the response body without crashing the devnet sync. This is intentional: devnet is the primary network during beta; mainnet sync is best-effort.
+
+### Prisma Schema Change
+
+The `Escrow` model gained a `network` field and a composite unique constraint:
+
+```prisma
+model Escrow {
+  pda     String
+  network String @default("devnet")
+  // ...other fields...
+  @@unique([pda, network])
+  @@index([clientWallet, network])
+  @@index([freelancerWallet, network])
+  @@index([status, network])
+  @@index([network])
+}
+```
+
+The old `pda String @unique` was removed because the same PDA address can appear on both devnet and mainnet — both reference the same program seed derivation, but they are different on-chain accounts on different clusters.
+
+**Migration file:** `prisma/migrations/20260629000000_add_network_to_escrow/migration.sql`
+- Adds `network TEXT NOT NULL DEFAULT 'devnet'` — existing rows automatically become devnet rows.
+- Drops `Escrow_pda_key`, adds `Escrow_pda_network_key UNIQUE (pda, network)`.
+- Adds four new indexes.
+
+---
+
+## 35. Mainnet Safety System (Phase 16.5)
+
+### Why a Safety System?
+
+Mainnet SOL has real monetary value. A user who accidentally creates a 5 SOL escrow thinking they are on devnet would lose real money. Three layers of protection were added: a mandatory warning modal, a transaction confirmation modal, and a persistent banner.
+
+### `MainnetWarningModal.js`
+
+Shown whenever a user tries to switch to the `"mainnet"` network. The user must:
+1. Check three acknowledgement boxes:
+   - "I am 18 years of age or older."
+   - "I understand I could lose money."
+   - "I will only use funds I can afford to lose."
+2. Type the exact phrase `"I understand"` into a text input.
+
+The "Switch to Real SOL" confirm button remains disabled until all three boxes are checked **and** the input matches exactly. Props: `{ onConfirm, onCancel }`.
+
+### `TransactionConfirmModal.js`
+
+Shown before any on-chain transaction (create escrow, approve work, cancel escrow). Displays:
+- The action label (e.g. "Create Escrow")
+- SOL amount + live USD equivalent via `useSolanaPrice`
+- Escrow title, counterparty wallet (truncated)
+- A prominent network label ("Practice Mode" or "⚡ Real SOL")
+
+Props: `{ action, amountSOL, counterparty, escrowTitle, onConfirm, onCancel }`.
+
+`action` values: `create_escrow`, `approve_work`, `cancel_escrow`.
+
+### `hooks/useSolanaPrice.js`
+
+Fetches the SOL/USD price from the CoinGecko free API on mount and refreshes every 5 minutes:
+```
+https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd
+```
+No API key required. Rate limit: ~50 calls/minute — the 5-minute cache avoids hammering it.
+
+Returns `{ priceUSD, loading, solToUSD }` where `solToUSD(amount)` converts a SOL amount to a formatted USD string, or `null` if the price has not loaded yet.
+
+### Mainnet Banner (`Layout.js`)
+
+A persistent full-width banner is rendered at the top of every page when `isMainnet` is `true`:
+
+```jsx
+{isMainnet && (
+  <div className="mainnet-banner" role="alert">
+    <AlertTriangle size={14} />
+    <span><strong>⚡ Real Money Mode</strong> — SOL has real monetary value — All transactions are irreversible</span>
+    <button className="mainnet-banner__switch" onClick={() => setNetwork("devnet")}>
+      Switch to Practice Mode
+    </button>
+  </div>
+)}
+```
+
+The banner is amber/peach coloured and includes a one-click "Switch to Practice Mode" button. It cannot be dismissed without switching networks — the user must always be aware they are on mainnet.
+
+### Network Toggle (Navbar)
+
+A button between `ThemeToggle` and the notification bell:
+- Devnet: grey dot + "Practice Mode" label
+- Mainnet: pulsing red dot + "⚡ Real SOL" label
+
+Clicking it calls `setNetwork`, which either switches immediately (devnet) or shows `MainnetWarningModal` (mainnet).
+
+### Transaction Cap
+
+In `useEscrow.js → createEscrow`, before the transaction is built:
+```js
+const maxSOL = parseFloat(process.env.NEXT_PUBLIC_MAINNET_MAX_SOL || "5");
+if (isMainnet && amountInSOL > maxSOL) {
+  return { success: false, error: `Maximum escrow amount is ${maxSOL} SOL during beta.` };
+}
+```
+`NEXT_PUBLIC_MAINNET_MAX_SOL` defaults to `5`. This limits blast radius if a vulnerability is found during beta — at most 5 SOL can be locked per escrow.
+
+### Footer Legal Links (`Layout.js`)
+
+The footer was updated to include links to `/terms`, `/privacy`, and `/disclaimer`, plus a network indicator in the footer:
+- Devnet: "Solana Devnet — No real value"
+- Mainnet: "⚡ Solana Mainnet — Real SOL"
+
+---
+
+## 36. Legal Pages (Phase 16.6)
+
+Three legal pages were created using the `.legal-page` CSS class (a max-width article with system font, comfortable line-height, and `hr` dividers).
+
+### `/terms` — Terms of Service
+
+Eleven sections covering:
+1. **Acceptance** — using the app = accepting terms
+2. **What It Is** — escrow protocol, not a payment processor or financial institution
+3. **Beta Warning** — software may contain bugs; no guarantees
+4. **Responsibilities** — users are responsible for their own wallets and decisions
+5. **Prohibited Uses** — money laundering, sanctions evasion, illegal activity
+6. **Dispute Resolution** — no arbitration; blockchain is final
+7. **Intellectual Property** — open source (MIT); FreelancePay branding reserved
+8. **Liability** — no liability for lost funds; AS IS, no warranties
+9. **Changes** — terms may change; continued use = acceptance
+10. **Governing Law** — Pakistan
+11. **Contact** — Ibrahiem61@icloud.com
+
+### `/privacy` — Privacy Policy
+
+Eight sections covering:
+- What is collected: wallet address, optional display name/bio/skills/email, IPFS file URLs, blockchain transaction data
+- What is **not** collected: private keys, payment cards, government ID, location data, browsing history
+- How data is used: service provision, email notifications (opt-in), public profile display
+- Storage: Supabase PostgreSQL (EU), Pinata IPFS, Solana blockchain (permanent/public)
+- Your rights: profile deletion within 30 days, data export, email opt-out
+- Third-party services: Pinata, Supabase, Resend, Solana Foundation, Helius
+- Cookies: one cookie (`fp_auth` — httpOnly, 7-day expiry); no tracking or advertising cookies
+- Contact
+
+### `/disclaimer` — Beta Disclaimer
+
+Covers:
+- **Security status**: no professional audit; internal review conducted; automated tools (Clippy) run; no CRITICAL/HIGH findings
+- **Known limitations**: no dispute resolution, no recovery mechanism, wrong address = permanent loss, 5 SOL transaction cap, limited real-time sync
+- **Incident plan**: if a critical bug is found — immediately switch mainnet to whitelist-only, post public notice, contact Solana security team
+- **Recommended usage**: start with 0.01–0.1 SOL; only use funds you can afford to lose; verify counterparty address carefully
+- **Open source note**: users can read the contract source before trusting it
+
+### CSS for Legal Pages
+
+Added to `globals.css`:
+```css
+.legal-page { max-width: 680px; margin: 2rem auto; font-family: system-ui; line-height: 1.75; }
+.legal-updated { color: var(--ink-soft); font-size: 0.82rem; margin-top: -.25rem; }
+.legal-warn {
+  background: rgba(var(--err-rgb), 0.08);
+  border-left: 3px solid var(--err);
+  padding: .75rem 1rem;
+  border-radius: 0 6px 6px 0;
+  margin: 1.25rem 0;
+}
+```
+
+---
+
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel (GitHub auto-deploy from `main` branch).*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` daily cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel; `maxDuration: 300` in vercel.json), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32. Phase 13 added: frontend integration & polish — settings page (`/settings`) with display name, skills, hourly rate, bio; SOL balance display in Navbar; `useProfile` hook; escrow detail counterparty name resolution from DB. Phase 14 added: automated test suite — Jest + @testing-library/react + msw for API/hook/lib/utils unit tests; Playwright for end-to-end auth and escrow-flow tests; `babel.config.js` renamed to `babel.jest.config.js` to isolate Jest's Babel config from Next.js SWC. Phase 15 added: production deployment hardening — fixed 6-day Vercel deploy outage caused by sub-daily cron rejection (changed `* * * * *` → `0 0 * * *`), created `.vercelignore` to exclude node_modules and build artifacts from CLI uploads, rotated `CRON_SECRET`, committed `babel.config.js` deletion, confirmed all secrets are server-side only. Y2K Glass theme added: `data-theme` attribute switching, anti-flash inline script in `_document.js`, `hooks/useTheme.js`, `components/ThemeToggle.js`, Inter + Space Grotesk fonts via `next/font/google`, ~280 lines of Y2K CSS (frosted glass cards, iridescent prism border, pill buttons, periwinkle accent, Space Grotesk / Inter fonts).*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` daily cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel; `maxDuration: 300` in vercel.json), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32. Phase 13 added: frontend integration & polish — settings page (`/settings`) with display name, skills, hourly rate, bio; SOL balance display in Navbar; `useProfile` hook; escrow detail counterparty name resolution from DB. Phase 14 added: automated test suite — Jest + @testing-library/react + msw for API/hook/lib/utils unit tests; Playwright for end-to-end auth and escrow-flow tests; `babel.config.js` renamed to `babel.jest.config.js` to isolate Jest's Babel config from Next.js SWC. Phase 15 added: production deployment hardening — fixed 6-day Vercel deploy outage caused by sub-daily cron rejection (changed `* * * * *` → `0 0 * * *`), created `.vercelignore` to exclude node_modules and build artifacts from CLI uploads, rotated `CRON_SECRET`, committed `babel.config.js` deletion, confirmed all secrets are server-side only. Y2K Glass theme added: `data-theme` attribute switching, anti-flash inline script in `_document.js`, `hooks/useTheme.js`, `components/ThemeToggle.js`, Inter + Space Grotesk fonts via `next/font/google`, ~280 lines of Y2K CSS (frosted glass cards, iridescent prism border, pill buttons, periwinkle accent, Space Grotesk / Inter fonts). Phase 16 added: internal security audit of the on-chain program — seven findings (F1 MEDIUM zero-address freelancer, F3 LOW missing runtime length guards) fixed in `lib.rs`, `SECURITY_REVIEW.md` created with full checklist and findings table; dual-network architecture — `lib/networkConfig.js` with devnet/mainnet config objects, `NetworkContext` in `_app.js`, `useNetwork.js` hook, `useEscrow.js` made network-aware (dynamic programId, IDL address override), `lib/solana-reader.js` and `lib/indexer.js` accept a `network` parameter, cron endpoint syncs both networks (mainnet non-fatal), Prisma `Escrow` model gained `network` field + composite `@@unique([pda, network])` + migration SQL; mainnet safety system — `MainnetWarningModal` (3-checkbox + typed confirmation), `TransactionConfirmModal` (SOL+USD amounts, network label), `hooks/useSolanaPrice.js` (CoinGecko free API, 5-min cache), persistent mainnet banner in `Layout.js`, network toggle button in `Navbar`, 5 SOL transaction cap via `NEXT_PUBLIC_MAINNET_MAX_SOL`; legal pages — `/terms` (11 sections), `/privacy` (8 sections), `/disclaimer` (security status, known limitations, incident plan).*
