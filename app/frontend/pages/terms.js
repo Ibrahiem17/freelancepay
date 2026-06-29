@@ -54,7 +54,7 @@ export default function Terms() {
           <li>Illegal goods or services</li>
           <li>Money laundering or financing terrorism</li>
           <li>Fraud, misrepresentation, or deception of any kind</li>
-          <li>Any activity illegal in Pakistan, the user&apos;s jurisdiction, or internationally</li>
+          <li>Any activity illegal in the user&apos;s jurisdiction or internationally</li>
           <li>Attempting to exploit or attack the smart contracts or platform</li>
         </ul>
 
@@ -88,8 +88,8 @@ export default function Terms() {
 
         <h2>10. Governing Law</h2>
         <p>
-          These terms are governed by the laws of Pakistan. Any disputes shall be subject to
-          the exclusive jurisdiction of the courts in Lahore, Punjab, Pakistan.
+          These terms are governed by applicable law. Any disputes shall be resolved by the
+          parties in good faith, or through binding arbitration where required by local law.
         </p>
 
         <h2>11. Contact</h2>

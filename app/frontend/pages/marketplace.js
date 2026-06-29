@@ -170,7 +170,7 @@ export default function MarketplacePage() {
         <div className="wrap" style={{ textAlign: "center", paddingTop: "3.5rem", paddingBottom: "2.5rem" }}>
           <div className="eyebrow" style={{ marginBottom: "0.5rem" }}>Marketplace</div>
           <h1 style={{ fontFamily: "var(--font-display)", marginBottom: "0.75rem" }}>
-            Find Pakistan's Top Freelancers
+            Find the World's Top Freelancers
           </h1>
           <p style={{ color: "var(--ink-soft)", fontSize: "var(--fs-lg)", maxWidth: 520, margin: "0 auto 1.75rem", fontWeight: 600 }}>
             Browse verified freelancers, filter by skill, and hire with SOL locked in escrow.
