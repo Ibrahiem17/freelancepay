@@ -7,6 +7,7 @@ const WalletMultiButton = dynamic(
   { ssr: false }
 );
 import Layout from "@/components/Layout";
+import useSolPrice from "@/hooks/useSolPrice";
 
 // STATS is built from live getStaticProps data — see below
 
@@ -43,6 +44,7 @@ function truncWallet(addr) {
 
 function CompactFreelancerCard({ freelancer }) {
   const { walletAddress, displayName, skills, averageRating, totalReviews, hourlyRate, avatarUrl } = freelancer;
+  const solPrice = useSolPrice();
   const name = displayName || truncWallet(walletAddress);
   const initial = name[0].toUpperCase();
   const colors = ["var(--lav)", "var(--sage)", "var(--sky)", "var(--peach)"];
@@ -75,7 +77,12 @@ function CompactFreelancerCard({ freelancer }) {
           : <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>No reviews yet</span>
         }
         <span style={{ fontWeight: 700, color: "var(--brown)" }}>
-          {hourlyRate != null ? `${hourlyRate} SOL/hr` : "Negotiable"}
+          {hourlyRate != null ? (
+            <>
+              {hourlyRate} SOL/hr
+              {solPrice && <span style={{ fontSize: "0.72rem", color: "var(--ink-soft)", fontWeight: 600, marginLeft: 4 }}>≈ ${(hourlyRate * solPrice).toFixed(0)}/hr</span>}
+            </>
+          ) : "Negotiable"}
         </span>
       </div>
 
@@ -88,6 +95,7 @@ function CompactFreelancerCard({ freelancer }) {
 
 function CompactJobCard({ job }) {
   const { id, title, description, budgetSOL, requiredSkills, createdAt, client } = job;
+  const solPrice = useSolPrice();
   const clientName = client?.displayName || truncWallet(client.walletAddress);
   const diff = Date.now() - new Date(createdAt).getTime();
   const hrs  = Math.floor(diff / 3600000);
@@ -97,7 +105,10 @@ function CompactJobCard({ job }) {
     <div className="card jc-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
         <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.05rem", margin: 0 }}>{title}</h3>
-        <span className="amount" style={{ fontSize: "1rem", flexShrink: 0, marginLeft: "0.5rem" }}>{budgetSOL} SOL</span>
+        <span style={{ flexShrink: 0, marginLeft: "0.5rem", textAlign: "right" }}>
+          <span className="amount" style={{ fontSize: "1rem" }}>{budgetSOL} SOL</span>
+          {solPrice && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 1 }}>≈ ${(parseFloat(budgetSOL) * solPrice).toFixed(0)}</div>}
+        </span>
       </div>
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", margin: "0 0 0.6rem", lineHeight: 1.5, fontWeight: 600 }}>
         {description.length > 100 ? description.slice(0, 100) + "…" : description}

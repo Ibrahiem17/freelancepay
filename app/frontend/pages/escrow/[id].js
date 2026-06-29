@@ -13,6 +13,7 @@ import Toast from "@/components/Toast";
 import StarRating from "@/components/StarRating";
 import { useEscrow } from "@/src/hooks/useEscrow";
 import { uploadToIPFS, parseSubmission } from "@/utils/ipfs";
+import useSolPrice from "@/hooks/useSolPrice";
 
 const SYNC_DELAY = 2500;
 
@@ -169,6 +170,7 @@ export default function EscrowDetailPage() {
   const { id } = router.query;
   const { publicKey } = useWallet();
   const { approveWork, cancelEscrow, submitWork, requestRevision } = useEscrow();
+  const solPrice = useSolPrice();
 
   const [escrow, setEscrow]             = useState(null);
   const [loading, setLoading]           = useState(false);
@@ -331,7 +333,12 @@ export default function EscrowDetailPage() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="card-amount">{(escrow.amount / LAMPORTS).toFixed(4)} SOL</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 4 }}>locked in escrow</div>
+                  {solPrice && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>
+                      ≈ ${(escrow.amount / LAMPORTS * solPrice).toFixed(2)} USD
+                    </div>
+                  )}
+                  <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>locked in escrow</div>
                 </div>
               </div>
 

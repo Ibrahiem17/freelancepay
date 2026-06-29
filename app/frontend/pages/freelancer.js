@@ -333,10 +333,12 @@ export default function FreelancerPage() {
                 <div>
                   <span className="fl-earn-label">Total Earned</span>
                   <span className="fl-earn-value">{earnings.totalEarnedSOL} SOL</span>
+                  {solPrice && <span style={{ fontSize: "0.73rem", color: "var(--ink-soft)", fontWeight: 600, marginLeft: 6 }}>≈ ${(parseFloat(earnings.totalEarnedSOL) * solPrice).toFixed(2)}</span>}
                 </div>
                 <div>
                   <span className="fl-earn-label">Pending</span>
                   <span className="fl-earn-value">{earnings.pendingEarningsSOL} SOL</span>
+                  {solPrice && <span style={{ fontSize: "0.73rem", color: "var(--ink-soft)", fontWeight: 600, marginLeft: 6 }}>≈ ${(parseFloat(earnings.pendingEarningsSOL) * solPrice).toFixed(2)}</span>}
                 </div>
                 <Link href="/jobs" className="btn btn-sm btn-outline" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
                   <Briefcase size={13} strokeWidth={2} /> Browse Available Jobs

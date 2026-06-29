@@ -6,6 +6,7 @@ import { Download, TrendingUp, Briefcase, Clock, Star } from "lucide-react";
 import Layout from "@/components/Layout";
 import StarRating from "@/components/StarRating";
 import { useAuthContext } from "@/pages/_app";
+import useSolPrice from "@/hooks/useSolPrice";
 
 // Recharts uses window — must be dynamically imported with ssr:false
 const BarChart       = dynamic(() => import("recharts").then((m) => m.BarChart),       { ssr: false });
@@ -101,6 +102,7 @@ export default function AnalyticsPage() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
+  const solPrice = useSolPrice();
 
   // Redirect unauthenticated users
   useEffect(() => {
@@ -194,6 +196,7 @@ export default function AnalyticsPage() {
                   <TrendingUp size={18} strokeWidth={2} />
                 </div>
                 <div className="an-stat-value">{summary.totalEarnedSOL} SOL</div>
+                {solPrice && <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>≈ ${(parseFloat(summary.totalEarnedSOL) * solPrice).toFixed(2)} USD</div>}
                 <div className="an-stat-label">Total Earned</div>
               </div>
 
@@ -202,6 +205,7 @@ export default function AnalyticsPage() {
                   <Briefcase size={18} strokeWidth={2} />
                 </div>
                 <div className="an-stat-value">{summary.totalSpentSOL} SOL</div>
+                {solPrice && <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>≈ ${(parseFloat(summary.totalSpentSOL) * solPrice).toFixed(2)} USD</div>}
                 <div className="an-stat-label">Total Spent</div>
               </div>
 
@@ -213,6 +217,7 @@ export default function AnalyticsPage() {
                   <Clock size={18} strokeWidth={2} />
                 </div>
                 <div className="an-stat-value">{summary.pendingEarningsSOL} SOL</div>
+                {solPrice && <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>≈ ${(parseFloat(summary.pendingEarningsSOL) * solPrice).toFixed(2)} USD</div>}
                 <div className="an-stat-label">Pending Earnings</div>
               </div>
 
@@ -294,8 +299,9 @@ export default function AnalyticsPage() {
                             {cp.role}
                           </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "var(--ink)", flexShrink: 0 }}>
-                          {cp.totalSOL} SOL
+                        <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "var(--ink)", flexShrink: 0, textAlign: "right" }}>
+                          <div>{cp.totalSOL} SOL</div>
+                          {solPrice && <div style={{ fontSize: "0.73rem", color: "var(--ink-soft)", fontWeight: 600 }}>≈ ${(parseFloat(cp.totalSOL) * solPrice).toFixed(2)}</div>}
                         </div>
                       </div>
                     ))}
@@ -341,7 +347,8 @@ export default function AnalyticsPage() {
                           </span>
                         </span>
                         <span style={{ textAlign: "right", fontWeight: 800, fontSize: "0.85rem", color: "var(--ink)" }}>
-                          {r.amountSOL} SOL
+                          <div>{r.amountSOL} SOL</div>
+                          {solPrice && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)", fontWeight: 600 }}>≈ ${(parseFloat(r.amountSOL) * solPrice).toFixed(2)}</div>}
                         </span>
                       </div>
                     ))}
