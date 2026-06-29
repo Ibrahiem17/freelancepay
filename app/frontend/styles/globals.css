@@ -1874,17 +1874,16 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   font-family: var(--font-body-y2k), 'Inter', system-ui, sans-serif;
 }
 
-/* ── BODY — black, dot grid, major grid, abstract wireframe ── */
+/* ── BODY — black, subtle grid, abstract wireframe ── */
 [data-theme="y2k"] body {
   background-color: #050508;
   background-image:
-    radial-gradient(circle, rgba(0,240,255,0.11) 1px, transparent 1px),
-    linear-gradient(rgba(0,240,255,0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,240,255,0.028) 1px, transparent 1px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700'%3E%3Cpolygon points='350,28 636,192 636,508 350,672 64,508 64,192' fill='none' stroke='rgba(0,240,255,0.055)' stroke-width='1'/%3E%3Cpolygon points='350,118 560,242 560,458 350,582 140,458 140,242' fill='none' stroke='rgba(0,240,255,0.038)' stroke-width='1'/%3E%3Cpolygon points='350,208 490,296 490,404 350,492 210,404 210,296' fill='none' stroke='rgba(0,240,255,0.026)' stroke-width='0.8'/%3E%3Cline x1='64' y1='350' x2='636' y2='350' stroke='rgba(0,240,255,0.032)' stroke-width='0.7'/%3E%3Cline x1='350' y1='28' x2='350' y2='672' stroke='rgba(0,240,255,0.032)' stroke-width='0.7'/%3E%3C/svg%3E");
-  background-size: 28px 28px, 112px 112px, 112px 112px, 62vmin 62vmin;
-  background-position: 0 0, 0 0, 0 0, center center;
-  background-repeat: repeat, repeat, repeat, no-repeat;
+    linear-gradient(rgba(0,240,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,0.03) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900' viewBox='0 0 900 900'%3E%3Cpolygon points='450,40 820,230 820,670 450,860 80,670 80,230' fill='none' stroke='rgba(0,240,255,0.045)' stroke-width='1'/%3E%3Cpolygon points='450,140 720,300 720,600 450,760 180,600 180,300' fill='none' stroke='rgba(0,240,255,0.032)' stroke-width='1'/%3E%3Cpolygon points='450,240 620,370 620,530 450,660 280,530 280,370' fill='none' stroke='rgba(0,240,255,0.022)' stroke-width='0.8'/%3E%3Cpolygon points='450,340 520,400 520,500 450,560 380,500 380,400' fill='none' stroke='rgba(0,240,255,0.014)' stroke-width='0.6'/%3E%3Cline x1='450' y1='40' x2='450' y2='860' stroke='rgba(0,240,255,0.028)' stroke-width='0.6'/%3E%3Cline x1='80' y1='450' x2='820' y2='450' stroke='rgba(0,240,255,0.028)' stroke-width='0.6'/%3E%3Cline x1='80' y1='230' x2='820' y2='670' stroke='rgba(0,240,255,0.016)' stroke-width='0.5'/%3E%3Cline x1='820' y1='230' x2='80' y2='670' stroke='rgba(0,240,255,0.016)' stroke-width='0.5'/%3E%3C/svg%3E");
+  background-size: 80px 80px, 80px 80px, 66vmin 66vmin;
+  background-position: 0 0, 0 0, center center;
+  background-repeat: repeat, repeat, no-repeat;
   background-attachment: fixed;
 }
 
