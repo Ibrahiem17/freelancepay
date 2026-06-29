@@ -1862,6 +1862,25 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
   background-clip: text;
 }
 
+/* Kill the hero white-light radial gradient in Y2K */
+[data-theme="y2k"] .hero-bg-glow {
+  display: none !important;
+}
+
+/* Hero h1 in Y2K — small tagline, not a main heading */
+[data-theme="y2k"] section h1 {
+  font-size: 1.1rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  line-height: 1.5 !important;
+  background: none !important;
+  -webkit-text-fill-color: rgba(0,240,255,0.55) !important;
+  color: rgba(0,240,255,0.55) !important;
+  font-family: var(--font-body-y2k), monospace !important;
+  margin-bottom: 1.5rem !important;
+}
+
 [data-theme="y2k"] body,
 [data-theme="y2k"] p,
 [data-theme="y2k"] span,

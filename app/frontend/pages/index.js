@@ -137,7 +137,7 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
     <Layout title="Home">
       {/* ── Hero ─────────────────────────────────── */}
       <section style={{ padding: "5rem 1.5rem 3.5rem", textAlign: "center", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(214,200,236,0.18) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div className="hero-bg-glow" style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(214,200,236,0.18) 0%, transparent 70%)", pointerEvents: "none" }} />
 
         <div
           data-enter
