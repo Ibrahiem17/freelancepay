@@ -2,7 +2,7 @@
 module.exports = {
   testEnvironment: "node",
   transform: {
-    "^.+\\.m?js$": ["babel-jest", { configFile: "./babel.config.js" }],
+    "^.+\\.m?js$": ["babel-jest", { configFile: "./babel.jest.config.js" }],
   },
   // Transform ESM-only packages (jose v6 and bs58 v6 ship no CJS build)
   transformIgnorePatterns: ["/node_modules/(?!(jose|bs58)/)"],
