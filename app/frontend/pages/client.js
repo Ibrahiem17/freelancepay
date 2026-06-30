@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { Lock, Check, X, RotateCcw, RefreshCw, Download, Wallet } from "lucide-react";
+import { Lock, Check, X, RotateCcw, RefreshCw, Download, Wallet, Briefcase, ChevronDown, ChevronUp, UserCheck } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -186,22 +186,166 @@ function EscrowCard({ escrow, onApprove, onCancel, onRequestRevision, busy, solP
   );
 }
 
+function truncWallet(addr) {
+  return addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : "";
+}
+
+function MyPostedJobs({ onHireFreelancer }) {
+  const [jobs,    setJobs]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [open,    setOpen]    = useState({});
+  const [actingOn, setActingOn] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch("/api/jobs/mine");
+      const data = await res.json();
+      if (res.ok) setJobs(data.jobs || []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAction(jobId, appId, action) {
+    setActingOn(appId);
+    try {
+      await fetch(`/api/jobs/${jobId}/applications`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ appId, action }),
+      });
+      await load();
+    } finally {
+      setActingOn(null);
+    }
+  }
+
+  if (loading) return <div style={{ padding: "1rem 0", color: "var(--ink-soft)", fontWeight: 600 }}>Loading your jobs…</div>;
+  if (jobs.length === 0) return (
+    <div className="empty-state" style={{ marginBottom: "2rem" }}>
+      No jobs posted yet. <Link href="/post-job" className="btn btn-sm btn-primary" style={{ marginLeft: 8 }}>Post a Job</Link>
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom: "2rem" }}>
+      {jobs.map((job) => {
+        const isOpen   = open[job.id];
+        const pending  = job.applications || [];
+        const isFilled = job.status === "FILLED";
+
+        return (
+          <div key={job.id} className="card" style={{ marginBottom: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: "1rem" }}>{job.title}</span>
+                  <span className={`badge ${isFilled ? "badge-completed" : "badge-active"}`} style={{ fontSize: "0.7rem" }}>
+                    {isFilled ? "Filled" : "Open"}
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: 2 }}>
+                  Budget: {job.budgetSOL} SOL · {job.totalApplications} application{job.totalApplications !== 1 ? "s" : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                <Link href={`/post-job?edit=${job.id}`} className="btn btn-sm btn-outline" style={{ fontSize: "0.75rem" }}>Edit</Link>
+                {pending.length > 0 && (
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => setOpen((s) => ({ ...s, [job.id]: !s[job.id] }))}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {isOpen ? <><ChevronUp size={12} /> Hide</> : <><ChevronDown size={12} /> {pending.length} Proposal{pending.length !== 1 ? "s" : ""}</>}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {isOpen && pending.length > 0 && (
+              <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2px solid var(--line)", display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                {pending.map((app) => {
+                  const fl       = app.freelancer;
+                  const flName   = fl.displayName || truncWallet(fl.walletAddress);
+                  const isBusy   = actingOn === app.id;
+                  return (
+                    <div key={app.id} style={{ padding: "0.85rem", background: "var(--lav-lo)", borderRadius: "var(--r-md)", border: "1.5px solid var(--lav)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{flName}</div>
+                          <div className="mono" style={{ fontSize: "0.72rem", color: "var(--ink-soft)" }}>{truncWallet(fl.walletAddress)}</div>
+                          {fl.averageRating && (
+                            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--amber)", marginTop: 2 }}>★ {fl.averageRating.toFixed(1)}</div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: "0.4rem" }}>
+                          <button
+                            className="btn btn-sm btn-success"
+                            disabled={isBusy}
+                            onClick={() => {
+                              handleAction(job.id, app.id, "accept");
+                              onHireFreelancer({
+                                freelancerWallet: fl.walletAddress,
+                                title:            job.title,
+                                description:      job.description,
+                                amount:           String(job.budgetSOL),
+                              });
+                            }}
+                          >
+                            {isBusy ? <span className="spinner" /> : <><UserCheck size={13} strokeWidth={2.2} /> Accept & Hire</>}
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            disabled={isBusy}
+                            onClick={() => handleAction(job.id, app.id, "reject")}
+                          >
+                            {isBusy ? <span className="spinner" /> : <><X size={13} strokeWidth={2.2} /> Reject</>}
+                          </button>
+                        </div>
+                      </div>
+                      <p style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--ink)", fontWeight: 600, lineHeight: 1.5 }}>
+                        {app.proposal}
+                      </p>
+                      <Link href={`/profile/${fl.walletAddress}`} style={{ fontSize: "0.75rem", color: "var(--purple)", fontWeight: 700 }}>
+                        View profile →
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const SYNC_DELAY = 2500;
 
 export default function ClientPage() {
   const { publicKey } = useWallet();
   const router = useRouter();
   const { createEscrow, approveWork, cancelEscrow, requestRevision } = useEscrow();
-  const solPrice = useSolPrice();
+  const solPrice   = useSolPrice();
+  const escrowRef  = useRef(null);
 
   const [form, setForm]       = useState({ title: "", description: "", freelancer: "", amount: "" });
 
-  // Pre-fill freelancer wallet from ?hire= query param (set by profile page "Hire Me")
+  // Pre-fill from ?hire= query param OR from "Accept & Hire" in MyPostedJobs
   useEffect(() => {
     if (router.query.hire) {
       setForm((f) => ({ ...f, freelancer: router.query.hire }));
     }
   }, [router.query.hire]);
+
+  function handleHireFreelancer({ freelancerWallet, title, description, amount }) {
+    setForm({ title, description, freelancer: freelancerWallet, amount });
+    setTimeout(() => escrowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  }
 
   const [escrows,  setEscrows]  = useState([]);
   const [loading,  setLoading]  = useState(false);
@@ -314,11 +458,25 @@ export default function ClientPage() {
               </div>
             )}
 
+            {/* ── My Posted Jobs ── */}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <div className="section-header" style={{ marginBottom: "1rem" }}>
+                <h2 className="section-title" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <Briefcase size={16} strokeWidth={2} /> My Posted Jobs
+                </h2>
+                <Link href="/post-job" className="btn btn-sm btn-primary">+ Post a Job</Link>
+              </div>
+              <MyPostedJobs onHireFreelancer={handleHireFreelancer} />
+            </div>
+
             {/* ── Create form ── */}
-            <div className="card" style={{ marginBottom: "2rem" }}>
-              <h2 data-enter style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.25rem", fontFamily: "var(--font-display)" }}>
-                Create New Escrow
+            <div className="card" ref={escrowRef} style={{ marginBottom: "2rem" }}>
+              <h2 data-enter style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.25rem", fontFamily: "var(--font-display)" }}>
+                Create Escrow
               </h2>
+              <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)", fontWeight: 600, marginBottom: "1.25rem" }}>
+                Lock SOL for a freelancer you&apos;ve already agreed with, or use <strong>Accept &amp; Hire</strong> above to auto-fill from an application.
+              </p>
               <form onSubmit={handleCreate} data-testid="create-escrow-form">
                 <div className="form-group">
                   <label className="form-label">Project title *</label>

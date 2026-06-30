@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Search, Briefcase } from "lucide-react";
+import { Search, Briefcase, Send, ChevronDown, ChevronUp, CheckCircle } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuthContext } from "@/pages/_app";
 
@@ -36,9 +36,39 @@ function AvatarFallback({ name, size = 36 }) {
   );
 }
 
-function JobCard({ job }) {
-  const { id, title, description, budgetSOL, requiredSkills, createdAt, status, client } = job;
-  const clientName = client?.displayName || truncWallet(client.walletAddress);
+function JobCard({ job, currentUserWallet }) {
+  const { id, title, description, budgetSOL, requiredSkills, createdAt, client } = job;
+  const clientName   = client?.displayName || truncWallet(client.walletAddress);
+  const isOwnJob     = currentUserWallet && client.walletAddress === currentUserWallet;
+
+  const [showApply,  setShowApply]  = useState(false);
+  const [proposal,   setProposal]   = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [applied,    setApplied]    = useState(false);
+  const [applyError, setApplyError] = useState("");
+
+  async function handleApply(e) {
+    e.preventDefault();
+    if (!proposal.trim()) return;
+    setSubmitting(true);
+    setApplyError("");
+    try {
+      const res  = await fetch(`/api/jobs/${id}/apply`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ proposal }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setApplyError(data.error || "Failed to apply"); return; }
+      setApplied(true);
+      setShowApply(false);
+      setProposal("");
+    } catch {
+      setApplyError("Network error — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="card jc-card">
@@ -69,15 +99,48 @@ function JobCard({ job }) {
 
       <div className="jc-footer">
         <span className="muted" style={{ fontSize: "0.8rem" }}>{relativeTime(createdAt)}</span>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <Link href={`/profile/${client.walletAddress}`} className="btn btn-sm btn-outline">
-            Contact Client
-          </Link>
-          <Link href={`/jobs/${id}`} className="btn btn-sm btn-primary">
-            View Job
-          </Link>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {applied && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.8rem", fontWeight: 700, color: "var(--leaf)" }}>
+              <CheckCircle size={13} strokeWidth={2.5} /> Applied
+            </span>
+          )}
+          {!isOwnJob && !applied && currentUserWallet && (
+            <button
+              className={`btn btn-sm ${showApply ? "btn-outline" : "btn-primary"}`}
+              onClick={() => setShowApply((s) => !s)}
+            >
+              {showApply
+                ? <><ChevronUp size={13} strokeWidth={2.2} /> Cancel</>
+                : <><Send size={13} strokeWidth={2.2} /> Apply</>}
+            </button>
+          )}
+          {!currentUserWallet && (
+            <Link href="/" className="btn btn-sm btn-primary">Connect to Apply</Link>
+          )}
         </div>
       </div>
+
+      {showApply && (
+        <form onSubmit={handleApply} style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2px solid var(--line)" }}>
+          <label className="form-label" style={{ marginBottom: "0.4rem", display: "block" }}>
+            Your proposal <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>(tell the client why you're the right fit)</span>
+          </label>
+          <textarea
+            className="form-textarea"
+            value={proposal}
+            onChange={(e) => setProposal(e.target.value)}
+            placeholder="Describe your experience, approach, and why you're a great fit for this project…"
+            rows={4}
+            required
+            style={{ marginBottom: "0.6rem" }}
+          />
+          {applyError && <p style={{ color: "var(--red)", fontSize: "0.82rem", fontWeight: 700, marginBottom: "0.5rem" }}>{applyError}</p>}
+          <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || !proposal.trim()}>
+            {submitting ? <><span className="spinner" /> Submitting…</> : <><Send size={13} strokeWidth={2.2} /> Submit Proposal</>}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -91,6 +154,7 @@ const POSTED_FILTERS = [
 export default function JobsPage() {
   const auth    = useAuthContext();
   const isAuth  = !!auth?.user;
+  const currentUserWallet = auth?.user?.walletAddress ?? null;
 
   const [jobs,           setJobs]           = useState([]);
   const [total,          setTotal]          = useState(0);
@@ -272,7 +336,7 @@ export default function JobsPage() {
             </div>
           ) : (
             <div className="jobs-list">
-              {jobs.map((j) => <JobCard key={j.id} job={j} />)}
+              {jobs.map((j) => <JobCard key={j.id} job={j} currentUserWallet={currentUserWallet} />)}
             </div>
           )}
 

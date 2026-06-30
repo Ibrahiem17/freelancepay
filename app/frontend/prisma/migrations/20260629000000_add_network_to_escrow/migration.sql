@@ -4,8 +4,8 @@
 -- Step 1: Add the network column with a default
 ALTER TABLE "Escrow" ADD COLUMN "network" TEXT NOT NULL DEFAULT 'devnet';
 
--- Step 2: Drop the old unique constraint on pda alone
-ALTER TABLE "Escrow" DROP CONSTRAINT "Escrow_pda_key";
+-- Step 2: Drop the old unique constraint on pda alone (if it exists)
+ALTER TABLE "Escrow" DROP CONSTRAINT IF EXISTS "Escrow_pda_key";
 
 -- Step 3: Add the new composite unique constraint
 ALTER TABLE "Escrow" ADD CONSTRAINT "Escrow_pda_network_key" UNIQUE ("pda", "network");

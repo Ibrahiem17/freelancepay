@@ -32,6 +32,12 @@ enum JobPostStatus {
   CLOSED
 }
 
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -51,10 +57,11 @@ model User {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
-  clientEscrows     Escrow[]       @relation("ClientEscrows")
-  freelancerEscrows Escrow[]       @relation("FreelancerEscrows")
+  clientEscrows     Escrow[]          @relation("ClientEscrows")
+  freelancerEscrows Escrow[]          @relation("FreelancerEscrows")
   notifications     Notification[]
   jobPosts          JobPost[]
+  jobApplications   JobApplication[]
 }
 
 model Escrow {
@@ -122,7 +129,25 @@ model JobPost {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  client User @relation(fields: [clientWallet], references: [walletAddress])
+  client       User             @relation(fields: [clientWallet], references: [walletAddress])
+  applications JobApplication[]
 
   @@index([status, createdAt])
+}
+
+model JobApplication {
+  id               String            @id @default(cuid())
+  jobId            String
+  freelancerWallet String
+  proposal         String
+  status           ApplicationStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  job        JobPost @relation(fields: [jobId], references: [id])
+  freelancer User    @relation(fields: [freelancerWallet], references: [walletAddress])
+
+  @@unique([jobId, freelancerWallet])
+  @@index([jobId, status])
+  @@index([freelancerWallet])
 }
