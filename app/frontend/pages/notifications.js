@@ -61,8 +61,8 @@ export default function NotificationsPage() {
 
   const [activeTab, setActiveTab] = useState("all");
 
-  // Redirect unauthenticated users
-  if (typeof window !== "undefined" && !auth?.loading && !user) {
+  // Redirect unauthenticated users (wait for sign-in to fully complete first)
+  if (typeof window !== "undefined" && !auth?.loading && !auth?.signingIn && !user) {
     router.replace("/");
     return null;
   }

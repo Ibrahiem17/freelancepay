@@ -88,15 +88,16 @@ export default function useAuth() {
     }
   }, []);
 
-  // Auto sign-in when wallet connects; auto sign-out when it disconnects
+  // Auto sign-in when wallet connects (or when loading finishes with wallet already connected).
+  // Auto sign-out when wallet disconnects.
   useEffect(() => {
-    if (connected && publicKey && !user && !loading && signMessage) {
+    if (connected && publicKey && !user && !loading && !signingIn && signMessage) {
       signIn(publicKey.toBase58(), signMessage);
     }
     if (!connected && user) {
       signOut();
     }
-  }, [connected, publicKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     user,

@@ -104,12 +104,12 @@ export default function AnalyticsPage() {
   const [error,   setError]   = useState("");
   const solPrice = useSolPrice();
 
-  // Redirect unauthenticated users
+  // Redirect unauthenticated users (wait for sign-in to fully complete first)
   useEffect(() => {
-    if (!auth?.loading && !user) {
+    if (!auth?.loading && !auth?.signingIn && !user) {
       router.replace("/");
     }
-  }, [auth?.loading, user, router]);
+  }, [auth?.loading, auth?.signingIn, user, router]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -133,11 +133,16 @@ export default function AnalyticsPage() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  if (auth?.loading || (!user && !auth?.loading)) {
+  if (auth?.loading || auth?.signingIn || !user) {
     return (
       <Layout title="Analytics">
         <div className="page" style={{ textAlign: "center", paddingTop: "4rem" }}>
           <div className="spinner" />
+          {auth?.signingIn && (
+            <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem", fontWeight: 600, marginTop: "1rem" }}>
+              Approve the sign-in request in Phantom to continue…
+            </p>
+          )}
         </div>
       </Layout>
     );

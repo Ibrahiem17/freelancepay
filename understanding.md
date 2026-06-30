@@ -42,6 +42,7 @@
 34. [Dual Network Architecture (Phase 16.4)](#34-dual-network-architecture-phase-164)
 35. [Mainnet Safety System (Phase 16.5)](#35-mainnet-safety-system-phase-165)
 36. [Legal Pages (Phase 16.6)](#36-legal-pages-phase-166)
+37. [Auth Race Fix, Missing Pages & Hydration Fix](#37-auth-race-fix-missing-pages--hydration-fix)
 
 ---
 
@@ -2914,7 +2915,7 @@ Phase 13 connected the frontend to the full backend stack built in Phases 3–11
 - **Hourly rate** — stored in `User.hourlyRate`; shown on marketplace freelancer cards
 - **Bio** — short text stored in `User.bio`
 
-Saves via `PATCH /api/users/me` (created in Phase 13). The Navbar avatar shows the first character of `displayName` if set, falling back to the wallet address initial.
+Saves via `PATCH /api/auth/me`. The Navbar avatar shows the first character of `displayName` if set, falling back to the wallet address initial.
 
 ### SOL Balance Display
 
@@ -3124,7 +3125,7 @@ This prevents the white flash that would otherwise occur if the JS bundle loaded
 
 ### New Files
 
-**`hooks/useTheme.js`** — manages theme state, persists to `localStorage` under key `fp_theme`, applies `data-theme` to `<html>`. Returns `{ theme, toggleTheme, isY2K }`.
+**`hooks/useTheme.js`** — manages theme state, persists to `localStorage` under key `fp_theme`, applies `data-theme` to `<html>`. Returns `{ theme, toggleTheme, isY2K }`. The initial state is always `"cozy"` (same on server and client) to avoid a React hydration mismatch; the real saved value is read from `localStorage` in a `useEffect` that runs only after hydration.
 
 **`components/ThemeToggle.js`** — button component with two visual variants:
 - Cozy mode: dashed butter pill labeled "Y2K Glass"
@@ -3488,6 +3489,150 @@ Added to `globals.css`:
 
 ---
 
+---
+
+## 37. Auth Race Fix, Missing Pages & Hydration Fix
+
+### The Auth Race Condition
+
+**Root cause.** `useAuth.js` had a `useEffect` that auto-signs in when the wallet connects:
+
+```js
+useEffect(() => {
+  if (connected && publicKey && !user && !loading && signMessage) {
+    signIn(...);
+  }
+}, [connected, publicKey]); // ← only watched these two deps
+```
+
+When Phantom auto-connects on page load (`autoConnect: true`), the wallet adapter fires `connected = true` while the initial `GET /api/auth/me` fetch is still pending (`loading = true`). The `!loading` guard blocks sign-in. When `loading` becomes `false` a moment later, the effect does **not** re-run because neither `connected` nor `publicKey` changed — they were already `true`. Result: `user` stays `null` forever, and all protected pages immediately redirect to `/`.
+
+**Fix** — added `loading` to the deps array and a new `signingIn` state to prevent double sign-in:
+
+```js
+const [signingIn, setSigningIn] = useState(false);
+
+useEffect(() => {
+  if (connected && publicKey && !user && !loading && !signingIn && signMessage) {
+    signIn(publicKey.toBase58(), signMessage);
+  }
+  if (!connected && user) {
+    signOut();
+  }
+}, [connected, publicKey, loading]); // ← loading added
+```
+
+`signingIn` is set to `true` before the challenge/sign/verify flow starts and `false` after it resolves. This prevents a second auto-sign-in trigger if the effect fires again while Phantom's approval dialog is open.
+
+`useAuth` now returns `{ user, loading, signingIn, error, signIn, signOut, refreshUser, isAuthenticated }`.
+
+### Protected Page Redirect Guards
+
+All protected pages had the same bug: they redirected to `/` before checking whether sign-in was still in progress. Pages now check all three conditions before redirecting:
+
+```js
+useEffect(() => {
+  if (!auth?.loading && !auth?.signingIn && !user) {
+    router.replace("/");
+  }
+}, [auth?.loading, auth?.signingIn, user, router]);
+```
+
+And show a spinner with a helpful message while sign-in is pending:
+
+```jsx
+if (auth?.loading || auth?.signingIn || !user) {
+  return (
+    <Layout title="...">
+      <div className="page" style={{ textAlign: "center", paddingTop: "4rem" }}>
+        <div className="spinner" />
+        {auth?.signingIn && (
+          <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem", fontWeight: 600, marginTop: "1rem" }}>
+            Approve the sign-in request in Phantom to continue…
+          </p>
+        )}
+      </div>
+    </Layout>
+  );
+}
+```
+
+Pages updated: `pages/analytics.js`, `pages/notifications.js`, `pages/post-job.js`, `pages/settings.js`.
+
+### `PATCH /api/auth/me` Extended
+
+The profile-update endpoint previously only accepted `isClient` and `isFreelancer` booleans. It was extended to accept all editable profile fields:
+
+| Field | Validation |
+|---|---|
+| `displayName` | string or null, trimmed, max 50 chars |
+| `bio` | string or null, trimmed, max 500 chars |
+| `skills` | array of strings, each trimmed + lowercased, max 20 items |
+| `hourlyRate` | non-negative number or null |
+| `avatarUrl` | string or null, trimmed, max 500 chars |
+
+Unknown or empty payloads return `400 { error: "No valid fields to update" }`. The response is the updated `User` record.
+
+### `pages/settings.js` — Complete Implementation
+
+The settings page (previously only a stub described in Phase 13 docs) is now fully implemented:
+
+- **Avatar strip** — shows avatar image if `avatarUrl` is set, otherwise shows a generated initial letter in a hue derived from the wallet address
+- **Profile card** — `displayName`, `bio`, `avatarUrl`, `hourlyRate` with live SOL→USD conversion via `useSolPrice`
+- **Skills card** — chip-based multi-tag input (Enter or comma to add, × to remove, suggestion pills for 15 common skills), capped at 20
+- **Role card** — Client / Freelancer toggle buttons (can select both); Client uses lavender accent, Freelancer uses sage accent
+- Saves via `PATCH /api/auth/me`, calls `auth.refreshUser()` on success, shows a 3-second "Profile saved" confirmation
+
+### `pages/jobs/[id].js` — New Job Detail Page
+
+Public page at `/jobs/<jobId>`. No auth required to view.
+
+**What it shows:**
+- Job title, status badge (`OPEN` / `FILLED` / `CLOSED`)
+- Client avatar, display name (or truncated wallet), relative posting time, optional expiry date
+- Budget in SOL with live USD equivalent
+- Full description
+- Required skills as pill chips
+
+**Apply section (authenticated non-owners, `OPEN` jobs only):**
+A proposal textarea + "Apply" button. Calls `POST /api/jobs/[id]/apply`. Shows "Already applied" state if the user has a prior application.
+
+**Applications management (job owner only):**
+Fetches `GET /api/jobs/[id]/applications`. Each application shows:
+- Freelancer avatar, display name, skills
+- Collapsible proposal text (truncated to 3 lines by default)
+- Accept / Reject buttons calling `PATCH /api/jobs/[id]/applications`
+
+**Owner controls:**
+- "Close Job" button — calls `DELETE /api/jobs/[id]` to set status to `CLOSED`
+
+### `hooks/useTheme.js` — Hydration Fix
+
+**Root cause of the hydration error:** The original hook read `localStorage` inside the `useState` initializer:
+
+```js
+const [theme, setTheme] = useState(() => {
+  if (typeof window === "undefined") return "cozy";   // server → "cozy"
+  return localStorage.getItem("fp_theme") || "cozy";  // client → might be "y2k"
+});
+```
+
+On the server, the initializer returns `"cozy"`. On the client, it runs synchronously at hydration time and might return `"y2k"` — causing a mismatch. React threw: `Hydration failed because the server rendered text didn't match the client`.
+
+**Fix** — always initialize to `"cozy"` (matching server), then read `localStorage` in a `useEffect`:
+
+```js
+const [theme, setTheme] = useState("cozy"); // identical on server + client
+
+useEffect(() => {
+  const saved = localStorage.getItem("fp_theme") || "cozy";
+  setTheme(saved);
+  document.documentElement.setAttribute("data-theme", saved);
+}, []);
+```
+
+The `_document.js` anti-flash inline script still runs before React hydrates (setting `data-theme` synchronously from `localStorage`), so there is no visible flicker even though React's own state starts at `"cozy"`.
+
 *Program deployed on Solana Devnet at `5Xw3NMeBryNtdb2Hpg6pU1HqkpT9ymx6aScstd1T8NTX`. Frontend deployed on Vercel (GitHub auto-deploy from `main` branch).*
 
-*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` daily cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel; `maxDuration: 300` in vercel.json), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32. Phase 13 added: frontend integration & polish — settings page (`/settings`) with display name, skills, hourly rate, bio; SOL balance display in Navbar; `useProfile` hook; escrow detail counterparty name resolution from DB. Phase 14 added: automated test suite — Jest + @testing-library/react + msw for API/hook/lib/utils unit tests; Playwright for end-to-end auth and escrow-flow tests; `babel.config.js` renamed to `babel.jest.config.js` to isolate Jest's Babel config from Next.js SWC. Phase 15 added: production deployment hardening — fixed 6-day Vercel deploy outage caused by sub-daily cron rejection (changed `* * * * *` → `0 0 * * *`), created `.vercelignore` to exclude node_modules and build artifacts from CLI uploads, rotated `CRON_SECRET`, committed `babel.config.js` deletion, confirmed all secrets are server-side only. Y2K Glass theme added: `data-theme` attribute switching, anti-flash inline script in `_document.js`, `hooks/useTheme.js`, `components/ThemeToggle.js`, Inter + Space Grotesk fonts via `next/font/google`, ~280 lines of Y2K CSS (frosted glass cards, iridescent prism border, pill buttons, periwinkle accent, Space Grotesk / Inter fonts). Phase 16 added: internal security audit of the on-chain program — seven findings (F1 MEDIUM zero-address freelancer, F3 LOW missing runtime length guards) fixed in `lib.rs`, `SECURITY_REVIEW.md` created with full checklist and findings table; dual-network architecture — `lib/networkConfig.js` with devnet/mainnet config objects, `NetworkContext` in `_app.js`, `useNetwork.js` hook, `useEscrow.js` made network-aware (dynamic programId, IDL address override), `lib/solana-reader.js` and `lib/indexer.js` accept a `network` parameter, cron endpoint syncs both networks (mainnet non-fatal), Prisma `Escrow` model gained `network` field + composite `@@unique([pda, network])` + migration SQL; mainnet safety system — `MainnetWarningModal` (3-checkbox + typed confirmation), `TransactionConfirmModal` (SOL+USD amounts, network label), `hooks/useSolanaPrice.js` (CoinGecko free API, 5-min cache), persistent mainnet banner in `Layout.js`, network toggle button in `Navbar`, 5 SOL transaction cap via `NEXT_PUBLIC_MAINNET_MAX_SOL`; legal pages — `/terms` (11 sections), `/privacy` (8 sections), `/disclaimer` (security status, known limitations, incident plan).*
+*Phase 1 added: environment verifier (`verify-setup.js`), `.env.local.example` template, and Devnet airdrop CLI. Phase 2 added: multi-escrow support via `ClientProfile` + counter-based PDA seeds, dead source file cleanup, and a 13-test integration suite (`test-program.js`). Program recompiled with platform-tools v1.52 (Rust 1.89.0-dev) and redeployed to the same Program ID. Phase 3 added: PostgreSQL database layer via Prisma 5 + Supabase — five models (User, Escrow, Notification, Review, JobPost), singleton client (`lib/prisma.js`), seed script, and migration applied to production Supabase instance. Phase 4 added: wallet-based authentication — challenge/verify/me/logout API routes, `lib/auth.js` (JWT via jose), `lib/cache.js` (single-use nonce store + rate limiter), `hooks/useAuth.js` (auto sign-in/out on wallet connect), and `AuthContext` wired into `_app.js`. Phase 5 added: on-chain indexer — `lib/solana-reader.js` (read-only Anchor provider, `fetchAllEscrows`, `parseStatus`), `lib/indexer.js` (`syncEscrows` upsert loop + 5-transition notification creator), `/api/cron/sync-escrows` Bearer-auth endpoint, `scripts/run-indexer.js` CLI, and `vercel.json` daily cron config. Phase 6 added: REST API layer — `lib/api-helpers.js` (shared BigInt serializer, auth gating, pagination, SOL conversion), seven endpoint groups serving escrow lists, single escrow detail (with Solana fallback), user history with aggregate stats, notification CRUD, and platform statistics with 5-minute module-level cache. Phase 7 added: real-time notifications via Server-Sent Events — `lib/eventBus.js` (EventEmitter singleton on `global`), indexer updated to emit after each Notification write, `pages/api/sse/notifications.js` (SSE stream with auth, keepalive, per-wallet channel; `maxDuration: 300` in vercel.json), `hooks/useNotifications.js` (EventSource, exponential-backoff reconnect, markAsRead/markAllAsRead), Navbar bell with live badge and dropdown, `/notifications` full history page with All/Unread/Work/Payments tabs. Phase 8 added: email notifications via Resend — `lib/emailTemplates.js` (5 inline-CSS HTML templates), `lib/email.js` (recipient resolution, unsubscribe token injection, Resend API wrapper), `/api/email/unsubscribe` (token-verified opt-out page), `/api/test-email` (dev-only test sender). Phase 9 added: two-sided marketplace — `/api/search/freelancers` (ILIKE + skills hasSome + rate range + sort), `/api/jobs` (CRUD with isClient guard), `/marketplace` (FreelancerCard grid, 300ms debounce, load-more), `/jobs` (sidebar filters, cursor pagination), `/post-job` (protected form), landing page ISR sections for featured freelancers and latest jobs. Phase 10 added: reviews and rating system — `POST /api/reviews` (create review with atomic `prisma.$transaction` that recalculates freelancer averageRating), `GET /api/reviews/[walletAddress]` (paginated list + aggregate + star distribution), `GET /api/users/[walletAddress]` (public profile endpoint), `components/StarRating.js` (display mode with decimal partial-star via overflow-clip, interactive mode with hover/click), escrow detail page updated with inline `ReviewForm` (shake animation on missing rating) and `ExistingReviewCard`, new `/profile/[walletAddress]` public page showing full profile header + reviews section with aggregate summary and distribution bars. Phase 11 added: analytics dashboard and CSV export — `GET /api/analytics/me` (protected; summary BigInt accumulation, `$queryRaw date_trunc` monthly data with JS gap-fill, top counterparties, recent activity), `GET /api/analytics/export` (CSV download via `Content-Disposition: attachment`, `escapeCSV` helper), `/analytics` page (4-card stats strip, recharts BarChart with `{ ssr: false }` dynamic import + hex fills because CSS vars don't work in SVG, top counterparties, 5-column activity table), Navbar Analytics link (auth-gated), CSS section 32. Phase 13 added: frontend integration & polish — settings page (`/settings`) with display name, skills, hourly rate, bio; SOL balance display in Navbar; `useProfile` hook; escrow detail counterparty name resolution from DB. Phase 14 added: automated test suite — Jest + @testing-library/react + msw for API/hook/lib/utils unit tests; Playwright for end-to-end auth and escrow-flow tests; `babel.config.js` renamed to `babel.jest.config.js` to isolate Jest's Babel config from Next.js SWC. Phase 15 added: production deployment hardening — fixed 6-day Vercel deploy outage caused by sub-daily cron rejection (changed `* * * * *` → `0 0 * * *`), created `.vercelignore` to exclude node_modules and build artifacts from CLI uploads, rotated `CRON_SECRET`, committed `babel.config.js` deletion, confirmed all secrets are server-side only. Y2K Glass theme added: `data-theme` attribute switching, anti-flash inline script in `_document.js`, `hooks/useTheme.js`, `components/ThemeToggle.js`, Inter + Space Grotesk fonts via `next/font/google`, ~280 lines of Y2K CSS (frosted glass cards, iridescent prism border, pill buttons, periwinkle accent, Space Grotesk / Inter fonts). Phase 16 added: internal security audit of the on-chain program — seven findings (F1 MEDIUM zero-address freelancer, F3 LOW missing runtime length guards) fixed in `lib.rs`, `SECURITY_REVIEW.md` created with full checklist and findings table; dual-network architecture — `lib/networkConfig.js` with devnet/mainnet config objects, `NetworkContext` in `_app.js`, `useNetwork.js` hook, `useEscrow.js` made network-aware (dynamic programId, IDL address override), `lib/solana-reader.js` and `lib/indexer.js` accept a `network` parameter, cron endpoint syncs both networks (mainnet non-fatal), Prisma `Escrow` model gained `network` field + composite `@@unique([pda, network])` + migration SQL; mainnet safety system — `MainnetWarningModal` (3-checkbox + typed confirmation), `TransactionConfirmModal` (SOL+USD amounts, network label), `hooks/useSolanaPrice.js` (CoinGecko free API, 5-min cache), persistent mainnet banner in `Layout.js`, network toggle button in `Navbar`, 5 SOL transaction cap via `NEXT_PUBLIC_MAINNET_MAX_SOL`; legal pages — `/terms` (11 sections), `/privacy` (8 sections), `/disclaimer` (security status, known limitations, incident plan). Phase 17 added: auth race condition fix — `useAuth.js` effect now includes `loading` in its deps array and a `signingIn` state flag so that Phantom auto-connect on page load correctly triggers sign-in even when the initial cookie check is still in flight; all protected pages (`analytics.js`, `notifications.js`, `post-job.js`, `settings.js`) updated to include `signingIn` in their redirect guards and loading spinners; `PATCH /api/auth/me` extended to accept all profile fields (`displayName`, `bio`, `skills`, `hourlyRate`, `avatarUrl`) in addition to role flags; `pages/settings.js` fully implemented (avatar strip, profile card, skills chip input, role toggles, save via `PATCH /api/auth/me`); `pages/jobs/[id].js` created (public job detail page with apply form for non-owners and applications management for owners); `hooks/useTheme.js` hydration mismatch fixed by moving `localStorage` read from the `useState` initializer into a `useEffect` so server and initial client render both start at `"cozy"`.*
