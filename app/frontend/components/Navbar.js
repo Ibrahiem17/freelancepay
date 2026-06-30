@@ -83,6 +83,7 @@ export default function Navbar() {
     ...(connected ? [
       { href: "/client",     label: "Client" },
       { href: "/freelancer", label: "Freelancer" },
+      { href: "/post-job",   label: "Post a Job" },
       { href: "/analytics",  label: "Analytics" },
     ] : []),
   ];
