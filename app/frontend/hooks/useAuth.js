@@ -9,9 +9,10 @@ async function encodeBase58(bytes) {
 
 export default function useAuth() {
   const { publicKey, signMessage, connected } = useWallet();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [user,      setUser]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  const [error,     setError]     = useState(null);
 
   // Restore session from cookie on mount
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function useAuth() {
 
   const signIn = useCallback(
     async (walletAddress, signMessageFn) => {
+      setSigningIn(true);
       try {
         setError(null);
 
@@ -65,6 +67,8 @@ export default function useAuth() {
         const msg = err.message || "Sign-in failed";
         setError(msg);
         return { success: false, error: msg };
+      } finally {
+        setSigningIn(false);
       }
     },
     []
@@ -97,6 +101,7 @@ export default function useAuth() {
   return {
     user,
     loading,
+    signingIn,
     error,
     signIn,
     signOut,

@@ -26,12 +26,12 @@ export default function PostJobPage() {
   const [submitting,  setSubmitting]  = useState(false);
   const [error,       setError]       = useState("");
 
-  // Redirect to home if not logged in once auth resolves
+  // Only redirect once auth is fully resolved and no sign-in is in progress
   useEffect(() => {
-    if (!auth?.loading && !user) {
+    if (!auth?.loading && !auth?.signingIn && !user) {
       router.replace("/");
     }
-  }, [auth?.loading, user, router]);
+  }, [auth?.loading, auth?.signingIn, user, router]);
 
   function addSkill(skill) {
     const s = skill.trim().toLowerCase();
@@ -84,11 +84,16 @@ export default function PostJobPage() {
     }
   }
 
-  if (auth?.loading || !user) {
+  if (auth?.loading || auth?.signingIn || !user) {
     return (
       <Layout title="Post a Job">
         <div className="page" style={{ textAlign: "center", paddingTop: "4rem" }}>
           <div className="spinner" />
+          {auth?.signingIn && (
+            <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem", fontWeight: 600, marginTop: "1rem" }}>
+              Approve the sign-in request in Phantom to continue…
+            </p>
+          )}
         </div>
       </Layout>
     );
