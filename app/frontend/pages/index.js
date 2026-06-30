@@ -8,6 +8,7 @@ const WalletMultiButton = dynamic(
 );
 import Layout from "@/components/Layout";
 import useSolPrice from "@/hooks/useSolPrice";
+import { useAuthContext } from "@/pages/_app";
 
 // STATS is built from live getStaticProps data — see below
 
@@ -132,6 +133,12 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
     { value: platformStats.volume ?? "0 SOL",     label: "Volume processed" },
   ];
   const { connected } = useWallet();
+  const auth = useAuthContext();
+  const user = auth?.user ?? null;
+  const role = user?.isClient && user?.isFreelancer ? "Client & Freelancer"
+             : user?.isClient     ? "Client"
+             : user?.isFreelancer ? "Freelancer"
+             : null;
 
   return (
     <Layout title="Home">
@@ -166,6 +173,20 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
           FreelancePay locks SOL in a Solana smart contract until work is approved —
           protecting both clients and freelancers with zero platform fees.
         </p>
+
+        {user && role && (
+          <div data-enter style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 18px", borderRadius: 8, background: "var(--lav-lo)", border: "1.5px solid var(--lav)", marginBottom: "1rem" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--purple)", display: "inline-block", flexShrink: 0 }} />
+            <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--purple)" }}>
+              Logged in as {role}
+            </span>
+            {user.displayName && (
+              <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ink-soft)" }}>
+                · {user.displayName}
+              </span>
+            )}
+          </div>
+        )}
 
         {connected ? (
           <div data-enter style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
