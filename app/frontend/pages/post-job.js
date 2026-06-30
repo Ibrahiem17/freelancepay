@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Briefcase, Plus, X } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuthContext } from "@/pages/_app";
+import SolUsdInput from "@/components/SolUsdInput";
 
 const SKILL_SUGGESTIONS = [
   "react", "solana", "rust", "node.js", "python", "next.js",
@@ -141,19 +142,13 @@ export default function PostJobPage() {
 
           {/* Budget */}
           <div className="form-group">
-            <label className="form-label">Budget (SOL) <span style={{ color: "var(--red)" }}>*</span></label>
-            <input
-              className="form-input"
-              type="number"
-              min="0.001"
-              step="0.001"
+            <label className="form-label">Budget <span style={{ color: "var(--red)" }}>*</span></label>
+            <SolUsdInput
               value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              placeholder="e.g. 2.5"
+              onChange={setBudget}
               required
-              style={{ maxWidth: 200 }}
             />
-            <div className="form-hint">This will be the escrow amount when you hire someone.</div>
+            <div className="form-hint" style={{ marginTop: "0.4rem" }}>This will be the escrow amount when you hire someone.</div>
           </div>
 
           {/* Skills */}

@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { Lock, Check, X, RotateCcw, RefreshCw, Download, Wallet, Briefcase, ChevronDown, ChevronUp, UserCheck } from "lucide-react";
+import SolUsdInput from "@/components/SolUsdInput";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -491,13 +492,12 @@ export default function ClientPage() {
                   <input className="form-input mono" value={form.freelancer} onChange={field("freelancer")} placeholder="Solana public key (base58)" required />
                 </div>
                 <div className="form-group" style={{ marginBottom: "1.25rem" }}>
-                  <label className="form-label">Amount (SOL) *</label>
-                  <input className="form-input" type="number" step="0.001" min="0.001" value={form.amount} onChange={field("amount")} placeholder="e.g. 0.5" required />
-                  {solPrice && form.amount && !isNaN(parseFloat(form.amount)) && (
-                    <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)", fontWeight: 600, marginTop: "0.35rem" }}>
-                      ≈ ${(parseFloat(form.amount) * solPrice).toFixed(2)} USD &nbsp;·&nbsp; 1 SOL = ${solPrice.toLocaleString()} USD
-                    </div>
-                  )}
+                  <label className="form-label">Amount *</label>
+                  <SolUsdInput
+                    value={form.amount}
+                    onChange={(sol) => setForm((f) => ({ ...f, amount: sol }))}
+                    required
+                  />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: "100%" }}>
                   {loading
