@@ -72,11 +72,11 @@ async function handlePost(req, res) {
   const user = await requireAuth(req, res);
   if (!user) return;
 
-  const dbUser = await prisma.user.findUnique({
-    where:  { walletAddress: user.wallet },
-    select: { isClient: true },
+  // Auto-register as client if not already (flag set by role selection or first job post)
+  await prisma.user.update({
+    where: { walletAddress: user.wallet },
+    data:  { isClient: true },
   });
-  if (!dbUser?.isClient) return err(res, "Only clients can post jobs", 403);
 
   const { title, description, budgetSOL, requiredSkills = [], expiresAt } = req.body || {};
 

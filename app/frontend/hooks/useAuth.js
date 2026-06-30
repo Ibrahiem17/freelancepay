@@ -76,6 +76,14 @@ export default function useAuth() {
     setError(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const r = await fetch("/api/auth/me");
+    if (r.ok) {
+      const data = await r.json();
+      if (data?.user) setUser(data.user);
+    }
+  }, []);
+
   // Auto sign-in when wallet connects; auto sign-out when it disconnects
   useEffect(() => {
     if (connected && publicKey && !user && !loading && signMessage) {
@@ -92,6 +100,7 @@ export default function useAuth() {
     error,
     signIn,
     signOut,
+    refreshUser,
     isAuthenticated: !!user,
   };
 }

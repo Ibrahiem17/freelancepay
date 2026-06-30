@@ -155,9 +155,17 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
     }
   }, [connected]);
 
-  function selectRole(r) {
+  async function selectRole(r) {
     setHomeRole(r);
     localStorage.setItem("fp_home_role", r);
+    // Persist role flag to DB so API calls (like POST /api/jobs) are unblocked
+    const flag = r === "Client" ? { isClient: true } : { isFreelancer: true };
+    await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(flag),
+    });
+    if (auth?.refreshUser) auth.refreshUser();
   }
 
   function handleLogout() {
