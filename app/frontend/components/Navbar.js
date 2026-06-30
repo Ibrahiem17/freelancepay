@@ -104,7 +104,7 @@ export default function Navbar() {
               {label}
             </Link>
           ))}
-          <span className="devnet-badge">DEVNET</span>
+
         </div>
 
         {/* Right: bell + user/wallet + hamburger — flex:1 justified end */}
