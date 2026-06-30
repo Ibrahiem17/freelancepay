@@ -1,7 +1,8 @@
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { Lock, PenLine, Zap, Star, ArrowRight, Briefcase } from "lucide-react";
+import { Lock, PenLine, Zap, Star, ArrowRight, Briefcase, LogOut } from "lucide-react";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
@@ -135,10 +136,37 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
   const { connected } = useWallet();
   const auth = useAuthContext();
   const user = auth?.user ?? null;
-  const role = user?.isClient && user?.isFreelancer ? "Client & Freelancer"
-             : user?.isClient     ? "Client"
-             : user?.isFreelancer ? "Freelancer"
-             : null;
+  const dbRole = user?.isClient && user?.isFreelancer ? "Client & Freelancer"
+               : user?.isClient     ? "Client"
+               : user?.isFreelancer ? "Freelancer"
+               : null;
+
+  const [homeRole, setHomeRole] = useState(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("fp_home_role");
+    if (stored) setHomeRole(stored);
+  }, []);
+
+  useEffect(() => {
+    if (!connected) {
+      setHomeRole(null);
+      localStorage.removeItem("fp_home_role");
+    }
+  }, [connected]);
+
+  function selectRole(r) {
+    setHomeRole(r);
+    localStorage.setItem("fp_home_role", r);
+  }
+
+  function handleLogout() {
+    setHomeRole(null);
+    localStorage.removeItem("fp_home_role");
+    if (auth?.signOut) auth.signOut();
+  }
+
+  const activeRole = homeRole || dbRole;
 
   return (
     <Layout title="Home">
@@ -174,25 +202,55 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
           protecting both clients and freelancers with zero platform fees.
         </p>
 
-        {user && role && (
-          <div data-enter style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 18px", borderRadius: 8, background: "var(--lav-lo)", border: "1.5px solid var(--lav)", marginBottom: "1rem" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--purple)", display: "inline-block", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--purple)" }}>
-              Logged in as {role}
-            </span>
-            {user.displayName && (
-              <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ink-soft)" }}>
-                · {user.displayName}
-              </span>
-            )}
-          </div>
-        )}
-
         {connected ? (
-          <div data-enter style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/client"      className="btn btn-primary magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>I&apos;m a Client →</Link>
-            <Link href="/freelancer"  className="btn btn-outline magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }}>I&apos;m a Freelancer →</Link>
-          </div>
+          activeRole ? (
+            <div data-enter style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 18px", borderRadius: 8, background: "var(--lav-lo)", border: "1.5px solid var(--lav)" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--purple)", display: "inline-block", flexShrink: 0 }} />
+                <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--purple)" }}>
+                  Logged in as {activeRole}
+                </span>
+                {user?.displayName && (
+                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ink-soft)" }}>· {user.displayName}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap", alignItems: "center" }}>
+                {activeRole.includes("Client") && (
+                  <Link href="/client" className="btn btn-primary magnetic" style={{ padding: "12px 28px", fontSize: "1rem" }}>
+                    Client Dashboard →
+                  </Link>
+                )}
+                {activeRole.includes("Freelancer") && (
+                  <Link href="/freelancer" className="btn btn-outline magnetic" style={{ padding: "12px 28px", fontSize: "1rem" }}>
+                    Freelancer Dashboard →
+                  </Link>
+                )}
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={() => { setHomeRole(null); localStorage.removeItem("fp_home_role"); }}
+                  style={{ fontSize: "0.82rem" }}
+                >
+                  Switch Role
+                </button>
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={handleLogout}
+                  style={{ fontSize: "0.82rem", color: "var(--red)", borderColor: "var(--red)" }}
+                >
+                  <LogOut size={13} strokeWidth={2.2} /> Log Out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div data-enter style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+              <button className="btn btn-primary magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }} onClick={() => selectRole("Client")}>
+                I&apos;m a Client →
+              </button>
+              <button className="btn btn-outline magnetic" style={{ padding: "12px 32px", fontSize: "1rem" }} onClick={() => selectRole("Freelancer")}>
+                I&apos;m a Freelancer →
+              </button>
+            </div>
+          )
         ) : (
           <div data-enter style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
             <WalletMultiButton style={{ fontSize: "1rem", height: 48, padding: "0 28px" }} />

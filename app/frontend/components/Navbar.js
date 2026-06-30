@@ -108,7 +108,7 @@ export default function Navbar() {
         </div>
 
         {/* Right: bell + user/wallet + hamburger — flex:1 justified end */}
-        <div className="navbar-right">
+        <div className="navbar-right" style={{ flex: "1 1 0", justifyContent: "flex-end" }}>
 
           <ThemeToggle />
 
