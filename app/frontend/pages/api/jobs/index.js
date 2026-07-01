@@ -72,12 +72,6 @@ async function handlePost(req, res) {
   const user = await requireAuth(req, res);
   if (!user) return;
 
-  // Auto-register as client if not already (flag set by role selection or first job post)
-  await prisma.user.update({
-    where: { walletAddress: user.wallet },
-    data:  { isClient: true },
-  });
-
   const { title, description, budgetSOL, requiredSkills = [], expiresAt } = req.body || {};
 
   if (!title || title.length < 5 || title.length > 100)
@@ -94,6 +88,11 @@ async function handlePost(req, res) {
     .filter(Boolean);
 
   try {
+    await prisma.user.update({
+      where: { walletAddress: user.wallet },
+      data:  { isClient: true },
+    });
+
     const job = await prisma.jobPost.create({
       data: {
         clientWallet:   user.wallet,

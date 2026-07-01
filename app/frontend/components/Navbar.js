@@ -80,7 +80,7 @@ export default function Navbar() {
     { href: "/how-it-works", label: "How It Works" },
     { href: "/marketplace",  label: "Marketplace", testid: "nav-marketplace" },
     { href: "/jobs",         label: "Jobs",         testid: "nav-jobs" },
-    ...(connected ? [
+    ...(user ? [
       { href: "/client",     label: "Client" },
       { href: "/freelancer", label: "Freelancer" },
       { href: "/post-job",   label: "Post a Job" },

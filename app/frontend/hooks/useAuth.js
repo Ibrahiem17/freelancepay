@@ -8,7 +8,7 @@ async function encodeBase58(bytes) {
 }
 
 export default function useAuth() {
-  const { publicKey, signMessage, connected } = useWallet();
+  const { publicKey, signMessage, connected, connecting } = useWallet();
   const [user,      setUser]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [signingIn, setSigningIn] = useState(false);
@@ -94,10 +94,10 @@ export default function useAuth() {
     if (connected && publicKey && !user && !loading && !signingIn && signMessage) {
       signIn(publicKey.toBase58(), signMessage);
     }
-    if (!connected && user) {
+    if (!connected && !connecting && user) {
       signOut();
     }
-  }, [connected, publicKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connected, connecting, publicKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     user,
