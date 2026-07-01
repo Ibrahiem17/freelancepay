@@ -99,7 +99,7 @@ export default function AnalyticsPage() {
   const router = useRouter();
   const auth   = useAuthContext();
   const user   = auth?.user ?? null;
-  const { publicKey, signMessage, connected } = useWallet();
+  const { connected } = useWallet();
 
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
@@ -108,12 +108,8 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     if (auth?.loading || auth?.signingIn || user) return;
-    if (connected && publicKey && signMessage) {
-      auth.signIn(publicKey.toBase58(), signMessage);
-      return;
-    }
-    router.replace("/");
-  }, [auth?.loading, auth?.signingIn, user, connected, publicKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!connected) router.replace("/");
+  }, [auth?.loading, auth?.signingIn, user, connected, router]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
