@@ -126,7 +126,22 @@ function CompactJobCard({ job }) {
   );
 }
 
-export default function Home({ featuredFreelancers = [], latestJobs = [], platformStats = {} }) {
+export default function Home() {
+  const [featuredFreelancers, setFeaturedFreelancers] = useState([]);
+  const [latestJobs,          setLatestJobs]          = useState([]);
+  const [platformStats,       setPlatformStats]       = useState({});
+
+  useEffect(() => {
+    fetch("/api/home-data")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d) return;
+        setFeaturedFreelancers(d.featuredFreelancers || []);
+        setLatestJobs(d.latestJobs || []);
+        setPlatformStats(d.platformStats || {});
+      })
+      .catch(() => {});
+  }, []);
   const STATS = [
     { value: platformStats.freelancers ?? "4M+",  label: "Freelancers",     count: platformStats.freelancersRaw },
     { value: "0%",                                label: "Platform fees" },
@@ -403,90 +418,3 @@ export default function Home({ featuredFreelancers = [], latestJobs = [], platfo
   );
 }
 
-export async function getStaticProps() {
-  try {
-    const prisma = require("../lib/prisma");
-
-    const [freelancerRows, jobRows, escrowCount, completedCount, freelancerCount, volumeRow] = await Promise.all([
-      prisma.user.findMany({
-        where: { isFreelancer: true },
-        orderBy: [
-          { averageRating: { sort: "desc", nulls: "last" } },
-          { createdAt: "desc" },
-        ],
-        take: 3,
-        select: {
-          walletAddress: true,
-          displayName:   true,
-          skills:        true,
-          hourlyRate:    true,
-          avatarUrl:     true,
-          averageRating: true,
-          totalReviews:  true,
-        },
-      }),
-      prisma.jobPost.findMany({
-        where:   { status: "OPEN" },
-        orderBy: { createdAt: "desc" },
-        take:    3,
-        include: {
-          client: {
-            select: { walletAddress: true, displayName: true, avatarUrl: true },
-          },
-        },
-      }),
-      prisma.escrow.count(),
-      prisma.escrow.count({ where: { status: "COMPLETED" } }),
-      prisma.user.count({ where: { isFreelancer: true } }),
-      prisma.escrow.aggregate({
-        where: { status: "COMPLETED" },
-        _sum:  { amountLamports: true },
-      }),
-    ]);
-
-    const freelancers = freelancerRows.map((u) => ({
-      walletAddress: u.walletAddress,
-      displayName:   u.displayName,
-      skills:        u.skills,
-      hourlyRate:    u.hourlyRate != null ? parseFloat(u.hourlyRate.toString()) : null,
-      avatarUrl:     u.avatarUrl,
-      averageRating: u.averageRating,
-      totalReviews:  u.totalReviews,
-    }));
-
-    const jobs = jobRows.map((j) => ({
-      id:             j.id,
-      title:          j.title,
-      description:    j.description,
-      budgetSOL:      parseFloat(j.budgetSOL.toString()),
-      requiredSkills: j.requiredSkills,
-      createdAt:      j.createdAt.toISOString(),
-      client: {
-        walletAddress: j.client.walletAddress,
-        displayName:   j.client.displayName,
-        avatarUrl:     j.client.avatarUrl,
-      },
-    }));
-
-    const lamports    = volumeRow._sum.amountLamports ?? 0n;
-    const volumeSOL   = (Number(lamports) / 1_000_000_000).toFixed(2);
-
-    const platformStats = {
-      freelancers:    freelancerCount > 0 ? `${freelancerCount}+` : "4M+",
-      freelancersRaw: freelancerCount,
-      volume:         `${volumeSOL} SOL`,
-      completed:      completedCount,
-      total:          escrowCount,
-    };
-
-    return {
-      props: { featuredFreelancers: freelancers, latestJobs: jobs, platformStats },
-      revalidate: 60,
-    };
-  } catch {
-    return {
-      props:      { featuredFreelancers: [], latestJobs: [], platformStats: {} },
-      revalidate: 60,
-    };
-  }
-}
