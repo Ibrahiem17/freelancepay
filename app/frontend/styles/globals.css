@@ -2529,3 +2529,17 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 .legal-page .legal-warn strong { display: block; margin-bottom: 0.4rem; font-size: 1rem; }
 
+/* ── Theme transition (View Transitions API) ─────── */
+@keyframes theme-ripple-in {
+  from { clip-path: circle(0%    at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to   { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+::view-transition-old(root) {
+  animation: none;
+}
+
+::view-transition-new(root) {
+  animation: theme-ripple-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+

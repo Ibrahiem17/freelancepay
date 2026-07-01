@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 
 export default function useTheme() {
-  // Always start with "cozy" so SSR and initial client render match (no hydration mismatch).
-  // localStorage is read in useEffect, which only runs on the client after hydration.
   const [theme, setTheme] = useState("cozy");
 
   useEffect(() => {
@@ -11,11 +9,25 @@ export default function useTheme() {
     document.documentElement.setAttribute("data-theme", saved);
   }, []);
 
-  const toggleTheme = () => {
+  const toggleTheme = (originX, originY) => {
     const next = theme === "cozy" ? "y2k" : "cozy";
-    setTheme(next);
-    localStorage.setItem("fp_theme", next);
-    document.documentElement.setAttribute("data-theme", next);
+
+    const apply = () => {
+      setTheme(next);
+      localStorage.setItem("fp_theme", next);
+      document.documentElement.setAttribute("data-theme", next);
+    };
+
+    if (typeof document === "undefined" || !document.startViewTransition) {
+      apply();
+      return;
+    }
+
+    const x = originX ?? window.innerWidth  / 2;
+    const y = originY ?? window.innerHeight / 2;
+    document.documentElement.style.setProperty("--vt-x", `${x}px`);
+    document.documentElement.style.setProperty("--vt-y", `${y}px`);
+    document.startViewTransition(apply);
   };
 
   return { theme, toggleTheme, isY2K: theme === "y2k" };
