@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -98,18 +99,21 @@ export default function AnalyticsPage() {
   const router = useRouter();
   const auth   = useAuthContext();
   const user   = auth?.user ?? null;
+  const { publicKey, signMessage, connected } = useWallet();
 
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
   const solPrice = useSolPrice();
 
-  // Redirect unauthenticated users (wait for sign-in to fully complete first)
   useEffect(() => {
-    if (!auth?.loading && !auth?.signingIn && !user) {
-      router.replace("/");
+    if (auth?.loading || auth?.signingIn || user) return;
+    if (connected && publicKey && signMessage) {
+      auth.signIn(publicKey.toBase58(), signMessage);
+      return;
     }
-  }, [auth?.loading, auth?.signingIn, user, router]);
+    router.replace("/");
+  }, [auth?.loading, auth?.signingIn, user, connected, publicKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = useCallback(async () => {
     setLoading(true);

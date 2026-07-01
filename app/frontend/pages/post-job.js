@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 import { Briefcase, Plus, X } from "lucide-react";
 import Layout from "@/components/Layout";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useAuthContext } from "@/pages/_app";
 import SolUsdInput from "@/components/SolUsdInput";
 
@@ -16,6 +17,7 @@ export default function PostJobPage() {
   const router = useRouter();
   const auth   = useAuthContext();
   const user   = auth?.user ?? null;
+  const { publicKey, signMessage, connected } = useWallet();
 
   const [title,       setTitle]       = useState("");
   const [description, setDescription] = useState("");
@@ -26,12 +28,14 @@ export default function PostJobPage() {
   const [submitting,  setSubmitting]  = useState(false);
   const [error,       setError]       = useState("");
 
-  // Only redirect once auth is fully resolved and no sign-in is in progress
   useEffect(() => {
-    if (!auth?.loading && !auth?.signingIn && !user) {
-      router.replace("/");
+    if (auth?.loading || auth?.signingIn || user) return;
+    if (connected && publicKey && signMessage) {
+      auth.signIn(publicKey.toBase58(), signMessage);
+      return;
     }
-  }, [auth?.loading, auth?.signingIn, user, router]);
+    router.replace("/");
+  }, [auth?.loading, auth?.signingIn, user, connected, publicKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function addSkill(skill) {
     const s = skill.trim().toLowerCase();
