@@ -2529,17 +2529,39 @@ a:not(.btn):not(.navbar-logo):not(.btn-download):not(.explorer-link):not(.toast-
 }
 .legal-page .legal-warn strong { display: block; margin-bottom: 0.4rem; font-size: 1rem; }
 
-/* ── Theme transition (View Transitions API) ─────── */
-@keyframes theme-ripple-in {
-  from { clip-path: circle(0%    at var(--vt-x, 50%) var(--vt-y, 50%)); }
-  to   { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+/* ── Theme transition — Dimension Rift ───────────── */
+@keyframes rift-old-out {
+  0%   { transform: scale(1) translateY(0);
+         filter: brightness(1) blur(0px); opacity: 1; }
+  38%  { filter: brightness(2.8) saturate(0.15) blur(2px); }
+  100% { transform: perspective(900px) rotateX(-22deg) scale(0.86) translateY(-5vh);
+         filter: brightness(0) blur(8px); opacity: 0; }
+}
+
+@keyframes rift-new-in {
+  0%   { clip-path: circle(0% at var(--vt-x, 50%) var(--vt-y, 50%));
+         transform: perspective(900px) rotateX(20deg) scale(0.9) translateY(4vh);
+         filter: brightness(3.5) saturate(0) blur(10px); opacity: 0; }
+  28%  { opacity: 1; filter: brightness(1.6) blur(1.5px);
+         transform: perspective(900px) rotateX(7deg) scale(0.96) translateY(1.5vh); }
+  70%  { filter: brightness(1.05) blur(0px); }
+  100% { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%));
+         transform: perspective(900px) rotateX(0deg) scale(1) translateY(0);
+         filter: brightness(1) blur(0px); opacity: 1; }
 }
 
 ::view-transition-old(root) {
-  animation: none;
+  animation: rift-old-out 0.48s cubic-bezier(0.55, 0, 1, 0.8) forwards;
 }
 
 ::view-transition-new(root) {
-  animation: theme-ripple-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: rift-new-in 0.72s cubic-bezier(0.0, 0.0, 0.15, 1.0) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.01ms !important;
+  }
 }
 
